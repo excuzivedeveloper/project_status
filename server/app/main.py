@@ -53,7 +53,10 @@ class ProjectInput(NamedModel):
     @field_validator("note")
     @classmethod
     def normalize_note(cls, value: str) -> str:
-        return value.strip()
+        value = value.strip()
+        if "\n" in value or "\r" in value:
+            raise ValueError("note must be a single line")
+        return value
 
 
 def call_storage(func, *args, **kwargs):
@@ -67,7 +70,7 @@ def call_storage(func, *args, **kwargs):
 
 @app.get("/health")
 def health() -> dict[str, str]:
-    get_storage()
+    get_storage().state()
     return {"status": "ok"}
 
 
