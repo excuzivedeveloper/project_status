@@ -20,6 +20,8 @@ internal static class Program
         }
 
         AutostartManager.Apply(settings.StartWithWindows);
+        CoreUiBehavior.Install();
+
         var startHidden = args.Any(arg => string.Equals(arg, "--startup", StringComparison.OrdinalIgnoreCase));
         Application.Run(new TrayApplicationContext(settings, startHidden));
     }
