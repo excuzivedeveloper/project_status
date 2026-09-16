@@ -19,10 +19,11 @@ jobs:
       - name: Resolve version
         shell: pwsh
         run: |
-          $version = "${{ github.ref_name }}".TrimStart("v", "V")
-          if ($version -notmatch '^\d+\.\d+\.\d+$') {
+          $tag = "${{ github.ref_name }}"
+          if ($tag -notmatch '^v\d+\.\d+\.\d+$') {
             throw "Release tag must be vMAJOR.MINOR.PATCH."
           }
+          $version = $tag.Substring(1)
           "VERSION=$version" >> $env:GITHUB_ENV
       - name: Publish self-contained win-x64
         shell: pwsh
