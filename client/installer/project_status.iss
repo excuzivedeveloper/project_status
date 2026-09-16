@@ -37,5 +37,8 @@ Source: "{#PublishDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
 Name: "{autoprograms}\Project Status"; Filename: "{app}\ProjectStatus.exe"
 Name: "{autodesktop}\Project Status"; Filename: "{app}\ProjectStatus.exe"; Tasks: desktopicon
 
+[Registry]
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: none; ValueName: "Project Status"; Flags: dontcreatekey uninsdeletevalue
+
 [Run]
 Filename: "{app}\ProjectStatus.exe"; Description: "Launch Project Status"; Flags: nowait postinstall skipifsilent
