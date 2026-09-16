@@ -33,7 +33,7 @@ internal static class UpdateChecker
             var tag = tagElement.GetString();
             var latestVersion = ParseVersion(tag);
             var currentVersion = NormalizeVersion(typeof(UpdateChecker).Assembly.GetName().Version);
-            if (latestVersion is null || currentVersion is null || latestVersion <= currentVersion)
+            if (latestVersion is null || currentVersion is null || latestVersion.CompareTo(currentVersion) <= 0)
             {
                 return null;
             }
