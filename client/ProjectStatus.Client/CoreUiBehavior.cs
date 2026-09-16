@@ -63,39 +63,73 @@ internal static class CoreUiBehavior
             .OfType<ToolStripButton>()
             .FirstOrDefault(item => string.Equals(item.Text, "Pin", StringComparison.Ordinal));
 
+        var modalDepth = 0;
         var topMostSuspendedForModal = false;
-        form.EnabledChanged += (_, _) =>
+
+        EventHandler? enterModalHandler = null;
+        EventHandler? leaveModalHandler = null;
+        EventHandler? disposedHandler = null;
+
+        enterModalHandler = (_, _) =>
         {
-            if (form.IsDisposed)
+            modalDepth++;
+            if (modalDepth != 1 || form.IsDisposed)
             {
                 return;
             }
 
-            if (!form.Enabled)
+            EndEditIfNeeded(grid);
+            if (form.TopMost)
             {
-                EndEditIfNeeded(grid);
-                if (form.TopMost)
-                {
-                    // A modal child disables its owner. Temporarily drop TopMost on
-                    // the owner so the child can never be hidden behind it. Do not use
-                    // SetAlwaysOnTop here because the persisted Pin preference must stay
-                    // unchanged.
-                    form.TopMost = false;
-                    topMostSuspendedForModal = true;
-                }
-
-                return;
-            }
-
-            if (topMostSuspendedForModal)
-            {
-                topMostSuspendedForModal = false;
-                if (pinButton?.Checked == true)
-                {
-                    form.TopMost = true;
-                }
+                // WinForms exposes modal-loop lifecycle directly. Temporarily drop
+                // TopMost on the owner for the outermost modal loop so owned dialogs
+                // cannot be hidden behind it. Do not call SetAlwaysOnTop because the
+                // persisted Pin preference must remain unchanged.
+                form.TopMost = false;
+                topMostSuspendedForModal = true;
             }
         };
+
+        leaveModalHandler = (_, _) =>
+        {
+            if (modalDepth > 0)
+            {
+                modalDepth--;
+            }
+
+            if (modalDepth != 0 || form.IsDisposed || !topMostSuspendedForModal)
+            {
+                return;
+            }
+
+            topMostSuspendedForModal = false;
+            if (pinButton?.Checked == true)
+            {
+                form.TopMost = true;
+            }
+        };
+
+        disposedHandler = (_, _) =>
+        {
+            if (enterModalHandler is not null)
+            {
+                Application.EnterThreadModal -= enterModalHandler;
+            }
+
+            if (leaveModalHandler is not null)
+            {
+                Application.LeaveThreadModal -= leaveModalHandler;
+            }
+
+            if (disposedHandler is not null)
+            {
+                form.Disposed -= disposedHandler;
+            }
+        };
+
+        Application.EnterThreadModal += enterModalHandler;
+        Application.LeaveThreadModal += leaveModalHandler;
+        form.Disposed += disposedHandler;
 
         foreach (var button in toolStrip.Items.OfType<ToolStripButton>())
         {
