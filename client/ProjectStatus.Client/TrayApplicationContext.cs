@@ -54,12 +54,22 @@ internal sealed class TrayApplicationContext : ApplicationContext
             _alwaysOnTopItem.Checked = _mainForm.TopMost;
         };
         _mainForm.RequestExit += (_, _) => ExitApplication();
-        _mainForm.StartPolling();
 
-        if (!startHidden)
+        EventHandler? idleHandler = null;
+        idleHandler = (_, _) =>
         {
-            _mainForm.ShowFromTray();
-        }
+            if (idleHandler is not null)
+            {
+                Application.Idle -= idleHandler;
+            }
+
+            _mainForm.StartPolling();
+            if (!startHidden)
+            {
+                _mainForm.ShowFromTray();
+            }
+        };
+        Application.Idle += idleHandler;
     }
 
     private void ExitApplication()
