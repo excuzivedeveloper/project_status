@@ -1,0 +1,13 @@
+services:
+  project-status-server:
+    build: .
+    restart: unless-stopped
+    environment:
+      PROJECT_STATUS_DB_PATH: /data/project_status.db
+    ports:
+      - "${PROJECT_STATUS_BIND_ADDRESS:-127.0.0.1}:${PROJECT_STATUS_PORT:-8080}:8080"
+    volumes:
+      - project-status-data:/data
+
+volumes:
+  project-status-data:
