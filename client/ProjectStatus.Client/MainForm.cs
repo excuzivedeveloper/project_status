@@ -362,6 +362,14 @@ internal sealed class MainForm : Form
             state = await EnsureLocalDeviceExistsAsync(state);
             SetSyncOk();
 
+            // The user may have started editing while the HTTP request was in flight.
+            // Do not apply any fetched snapshot while an edit is active; the next poll
+            // (or a later forced refresh) can safely apply it after editing ends.
+            if (_grid.IsCurrentCellInEditMode)
+            {
+                return;
+            }
+
             var signature = ComputeStateSignature(state);
             if (signature == _stateSignature)
             {
