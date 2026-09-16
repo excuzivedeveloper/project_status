@@ -1,3 +1,5 @@
+using System.Diagnostics;
+
 namespace ProjectStatus.Client;
 
 internal sealed class TrayApplicationContext : ApplicationContext
@@ -7,6 +9,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly MainForm _mainForm;
     private readonly NotifyIcon _notifyIcon;
     private readonly ToolStripMenuItem _alwaysOnTopItem;
+    private readonly ToolStripMenuItem _updateItem;
+    private Uri? _updateUri;
     private bool _exiting;
 
     public TrayApplicationContext(AppSettings settings, bool startHidden)
@@ -26,6 +30,12 @@ internal sealed class TrayApplicationContext : ApplicationContext
         var openItem = new ToolStripMenuItem("Open");
         openItem.Click += (_, _) => _mainForm.ShowFromTray();
 
+        _updateItem = new ToolStripMenuItem("Update available")
+        {
+            Visible = false
+        };
+        _updateItem.Click += (_, _) => OpenUpdateDownload();
+
         var settingsItem = new ToolStripMenuItem("Settings");
         settingsItem.Click += (_, _) => _mainForm.ShowSettingsDialog();
 
@@ -34,6 +44,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
         var menu = new ContextMenuStrip();
         menu.Items.Add(openItem);
+        menu.Items.Add(_updateItem);
         menu.Items.Add(_alwaysOnTopItem);
         menu.Items.Add(settingsItem);
         menu.Items.Add(new ToolStripSeparator());
@@ -63,12 +74,48 @@ internal sealed class TrayApplicationContext : ApplicationContext
             }
 
             _mainForm.StartPolling();
+            _ = CheckForUpdatesAsync();
             if (!startHidden)
             {
                 _mainForm.ShowFromTray();
             }
         };
         Application.Idle += idleHandler;
+    }
+
+    private async Task CheckForUpdatesAsync()
+    {
+        var update = await UpdateChecker.CheckAsync();
+        if (update is null || _exiting)
+        {
+            return;
+        }
+
+        _updateUri = update.DownloadUri;
+        _updateItem.Text = $"Update available v{update.Version}";
+        _updateItem.Visible = true;
+        _notifyIcon.Text = "Project Status — update available";
+    }
+
+    private void OpenUpdateDownload()
+    {
+        if (_updateUri is null)
+        {
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = _updateUri.AbsoluteUri,
+                UseShellExecute = true
+            });
+        }
+        catch
+        {
+            // Update checks are a convenience and must never break the running app.
+        }
     }
 
     private void ExitApplication()
