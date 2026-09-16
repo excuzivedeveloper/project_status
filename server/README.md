@@ -1,26 +1,63 @@
-# Sync Server
+# Project Status sync server
 
-This directory will contain the self-hosted synchronization service for Project Status.
+Small self-hosted HTTP API for Project Status. It stores only the latest shared state in SQLite.
 
-## MVP responsibilities
+## Scope
 
-The server should do only four things:
+The server stores:
 
-1. Store the current project rows.
-2. Store shared statuses and their colors.
-3. Store the shared device list.
-4. Serve a small HTTP API used by the Windows clients.
+- projects: name, current status, current device, one-line note, updated timestamp;
+- configurable statuses and colors;
+- configurable devices.
 
-SQLite is sufficient for the expected workload. The service will run in Docker on a small Ubuntu server.
+There is no project history, user system, notifications, analytics, GitHub integration, or offline conflict engine. Project updates are last-write-wins.
 
-## Network model
+## API
 
-The intended deployment is private access through Tailscale or an equivalent private network. The MVP does not require a public internet-facing API or a full user-account system.
+- `GET /health`
+- `GET /api/state` — one snapshot containing projects, statuses and devices
+- `POST|PUT|DELETE /api/projects`
+- `POST|PUT|DELETE /api/statuses`
+- `POST|PUT|DELETE /api/devices`
 
-## Conflict behavior
+A status or device cannot be deleted while a project references it. This keeps the shared state valid.
 
-Updates use a simple last-write-wins rule. Clients refresh approximately every 5 seconds.
+## Run with Docker
+
+```bash
+cd server
+cp .env.example .env
+docker compose up -d --build
+```
+
+The default bind address is `127.0.0.1`, so the API is not exposed to the network by default.
+For private remote access, install Tailscale on the server and clients, then set `PROJECT_STATUS_BIND_ADDRESS` in the local `.env` to the server's Tailscale IP. Do not commit that `.env` file.
+
+Check health locally:
+
+```bash
+curl http://127.0.0.1:8080/health
+```
+
+## Local development
+
+Python 3.12 is the target runtime.
+
+```bash
+cd server
+python -m venv .venv
+# activate the venv, then:
+pip install -r requirements.txt
+PROJECT_STATUS_DB_PATH=./project_status.db uvicorn app.main:app --reload --port 8080
+```
+
+Storage tests use only the Python standard library:
+
+```bash
+cd server
+python -m unittest discover -s tests -v
+```
 
 ## Privacy
 
-Runtime databases, real host addresses, credentials, and local deployment configuration must never be committed to the public repository.
+Never commit runtime databases, real server or Tailscale addresses, tokens, credentials, or personal project data. The repository contains code and safe example configuration only.
