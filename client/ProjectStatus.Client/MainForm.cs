@@ -14,7 +14,7 @@ internal sealed class MainForm : Form
 
     private readonly AppSettings _settings;
     private readonly ApiClient _api;
-    private readonly BufferedDataGridView _grid;
+    private readonly DataGridView _grid;
     private readonly ToolStripButton _pinButton;
     private readonly ToolStripStatusLabel _syncLabel;
     private readonly ToolStripStatusLabel _deviceLabel;
@@ -28,7 +28,6 @@ internal sealed class MainForm : Form
     private bool _allowExit;
 
     public event EventHandler? AlwaysOnTopChanged;
-    public event EventHandler? RequestExit;
 
     public MainForm(AppSettings settings, ApiClient api)
     {
@@ -211,7 +210,7 @@ internal sealed class MainForm : Form
 
     private DataGridView BuildGrid()
     {
-        var grid = new BufferedDataGridView
+        var grid = new DataGridView
         {
             AllowUserToAddRows = false,
             AllowUserToDeleteRows = false,
@@ -313,13 +312,13 @@ internal sealed class MainForm : Form
                 return;
             }
 
-            var row = grid.Rows[e.RowIndex];
-            if (row.Tag is not ProjectDto project || project.StatusId is null)
+            var statusId = ParseNullableId(grid.Rows[e.RowIndex].Cells[StatusColumn].Value);
+            if (statusId is not int id)
             {
                 return;
             }
 
-            var status = _state.Statuses.FirstOrDefault(item => item.Id == project.StatusId.Value);
+            var status = _state.Statuses.FirstOrDefault(item => item.Id == id);
             if (status is null)
             {
                 return;
@@ -328,22 +327,19 @@ internal sealed class MainForm : Form
             try
             {
                 var color = ColorTranslator.FromHtml(status.Color);
+                var textColor = GetContrastingTextColor(color);
                 e.CellStyle.BackColor = color;
-                e.CellStyle.ForeColor = GetContrastingTextColor(color);
+                e.CellStyle.ForeColor = textColor;
                 e.CellStyle.SelectionBackColor = color;
-                e.CellStyle.SelectionForeColor = GetContrastingTextColor(color);
+                e.CellStyle.SelectionForeColor = textColor;
             }
             catch
             {
-                // Server validates colors, but a malformed legacy value should not break the UI.
+                // Server validates colors; malformed legacy data should not break the UI.
             }
         };
 
-        grid.DataError += (_, e) =>
-        {
-            e.ThrowException = false;
-        };
-
+        grid.DataError += (_, e) => e.ThrowException = false;
         return grid;
     }
 
@@ -354,10 +350,7 @@ internal sealed class MainForm : Form
             return;
         }
 
-        var acquired = force
-            ? await WaitForGateAsync()
-            : _apiGate.Wait(0);
-
+        var acquired = force ? await WaitForGateAsync() : _apiGate.Wait(0);
         if (!acquired)
         {
             return;
@@ -410,7 +403,7 @@ internal sealed class MainForm : Form
         }
         catch (ApiException)
         {
-            // A second client may have created the same device at the same time.
+            // Another client may have created the same device concurrently.
         }
 
         return await _api.GetStateAsync();
@@ -447,11 +440,11 @@ internal sealed class MainForm : Form
                 _grid.Rows[rowIndex].Tag = project;
             }
 
-            if (selectedProjectId is not null)
+            if (selectedProjectId is int id)
             {
                 foreach (DataGridViewRow row in _grid.Rows)
                 {
-                    if (row.Tag is ProjectDto project && project.Id == selectedProjectId.Value)
+                    if (row.Tag is ProjectDto project && project.Id == id)
                     {
                         row.Cells[0].Selected = true;
                         break;
@@ -468,7 +461,8 @@ internal sealed class MainForm : Form
     private static List<ChoiceItem> BuildChoices(IEnumerable<(int Id, string Name)> source)
     {
         var result = new List<ChoiceItem> { new(string.Empty, "—") };
-        result.AddRange(source.Select(item => new ChoiceItem(item.Id.ToString(CultureInfo.InvariantCulture), item.Name)));
+        result.AddRange(source.Select(item =>
+            new ChoiceItem(item.Id.ToString(CultureInfo.InvariantCulture), item.Name)));
         return result;
     }
 
@@ -522,17 +516,7 @@ internal sealed class MainForm : Form
 
     private ProjectDto? SelectedProject()
     {
-        if (_grid.CurrentRow?.Tag is ProjectDto project)
-        {
-            return project;
-        }
-
-        if (_grid.CurrentCell?.OwningRow?.Tag is ProjectDto current)
-        {
-            return current;
-        }
-
-        return null;
+        return _grid.CurrentCell?.OwningRow?.Tag as ProjectDto;
     }
 
     private async Task SaveRowAsync(int rowIndex)
@@ -650,7 +634,11 @@ internal sealed class MainForm : Form
 
     private static string FormatUpdated(string value)
     {
-        if (!DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var parsed))
+        if (!DateTimeOffset.TryParse(
+                value,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.RoundtripKind,
+                out var parsed))
         {
             return value;
         }
@@ -663,7 +651,8 @@ internal sealed class MainForm : Form
         var builder = new StringBuilder();
         foreach (var status in state.Statuses.OrderBy(item => item.Id))
         {
-            builder.Append("S:").Append(status.Id).Append(':').Append(status.Name).Append(':').Append(status.Color).Append('|');
+            builder.Append("S:").Append(status.Id).Append(':').Append(status.Name)
+                .Append(':').Append(status.Color).Append('|');
         }
 
         foreach (var device in state.Devices.OrderBy(item => item.Id))
@@ -692,9 +681,9 @@ internal sealed class MainForm : Form
         var width = Math.Max(MinimumSize.Width, _settings.WindowWidth);
         var height = Math.Max(MinimumSize.Height, _settings.WindowHeight);
 
-        if (_settings.WindowX is not null && _settings.WindowY is not null)
+        if (_settings.WindowX is int x && _settings.WindowY is int y)
         {
-            var desired = new Rectangle(_settings.WindowX.Value, _settings.WindowY.Value, width, height);
+            var desired = new Rectangle(x, y, width, height);
             if (Screen.AllScreens.Any(screen => screen.WorkingArea.IntersectsWith(desired)))
             {
                 Bounds = desired;
@@ -703,11 +692,13 @@ internal sealed class MainForm : Form
         }
 
         var working = Screen.PrimaryScreen?.WorkingArea ?? new Rectangle(0, 0, 1280, 720);
+        width = Math.Min(width, working.Width);
+        height = Math.Min(height, working.Height);
         Bounds = new Rectangle(
             working.Right - width - 24,
             working.Top + 24,
-            Math.Min(width, working.Width),
-            Math.Min(height, working.Height));
+            width,
+            height);
     }
 
     private void OnFormClosing(object? sender, FormClosingEventArgs e)
@@ -731,12 +722,4 @@ internal sealed class MainForm : Form
     }
 
     private sealed record ChoiceItem(string Id, string Name);
-
-    private sealed class BufferedDataGridView : DataGridView
-    {
-        public BufferedDataGridView()
-        {
-            DoubleBuffered = true;
-        }
-    }
 }
