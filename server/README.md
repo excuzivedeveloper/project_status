@@ -1,79 +1,63 @@
-# Sync Server
+# Project Status sync server
 
-This directory contains the self-hosted synchronization service for Project Status.
+Small self-hosted HTTP API for Project Status. It stores only the latest shared state in SQLite.
 
-## MVP responsibilities
+## Scope
 
-The server does only four things:
+The server stores:
 
-1. Store the current project rows.
-2. Store shared statuses and their colors.
-3. Store the shared device list.
-4. Serve a small HTTP API used by the Windows clients.
+- projects: name, current status, current device, one-line note, updated timestamp;
+- configurable statuses and colors;
+- configurable devices.
 
-SQLite is sufficient for the expected workload. The service runs in Docker on a small Ubuntu server.
+There is no project history, user system, notifications, analytics, GitHub integration, or offline conflict engine. Project updates are last-write-wins.
 
 ## API
 
-- `GET /health` — verifies the service can read SQLite.
-- `GET /api/state` — returns projects, statuses, and devices in one lightweight snapshot.
-- `POST|PUT|DELETE /api/projects...` — project CRUD.
-- `POST|PUT|DELETE /api/statuses...` — status CRUD.
-- `POST|PUT|DELETE /api/devices...` — device CRUD.
+- `GET /health`
+- `GET /api/state` — one snapshot containing projects, statuses and devices
+- `POST|PUT|DELETE /api/projects`
+- `POST|PUT|DELETE /api/statuses`
+- `POST|PUT|DELETE /api/devices`
 
-Project timestamps are server-generated UTC ISO 8601 values with microsecond precision so rapid accepted updates remain distinguishable.
-
-Statuses and devices that are currently referenced by a project cannot be deleted. Assign another value (or clear the assignment) first.
+A status or device cannot be deleted while a project references it. This keeps the shared state valid.
 
 ## Run with Docker
 
-From this directory:
-
 ```bash
+cd server
+cp .env.example .env
 docker compose up -d --build
 ```
 
-By default, Compose publishes the API only on loopback:
+The default bind address is `127.0.0.1`, so the API is not exposed to the network by default.
+For private remote access, install Tailscale on the server and clients, then set `PROJECT_STATUS_BIND_ADDRESS` in the local `.env` to the server's Tailscale IP. Do not commit that `.env` file.
 
-```text
-127.0.0.1:8080
-```
-
-This avoids accidentally exposing the MVP API on the public network. A future Tailscale setup can provide private remote access without changing the application itself.
-
-Check it locally with:
+Check health locally:
 
 ```bash
 curl http://127.0.0.1:8080/health
 ```
 
-SQLite data is stored in the `project-status-data` Docker volume and survives container recreation.
+## Local development
 
-## Configuration
-
-`server/.env.example` documents the supported environment variables. Do not commit a real `.env` file.
-
-- `PROJECT_STATUS_PORT` controls the host port.
-- `PROJECT_STATUS_BIND_HOST` controls the host interface used by Compose. Keep the default `127.0.0.1` unless you intentionally understand the exposure.
-- `PROJECT_STATUS_DB_PATH` controls the database path inside the container.
-
-## Development checks
-
-From `server/`:
+Python 3.12 is the target runtime.
 
 ```bash
-python -m unittest discover -s tests -v
-python -m py_compile app/storage.py app/main.py
+cd server
+python -m venv .venv
+# activate the venv, then:
+pip install -r requirements.txt
+PROJECT_STATUS_DB_PATH=./project_status.db uvicorn app.main:app --reload --port 8080
 ```
 
-## Network model
+Storage tests use only the Python standard library:
 
-The intended deployment is private access through Tailscale or an equivalent private network. The MVP does not require a public internet-facing API or a full user-account system.
-
-## Conflict behavior
-
-Updates use a simple last-write-wins rule. Clients refresh approximately every 5 seconds.
+```bash
+cd server
+python -m unittest discover -s tests -v
+```
 
 ## Privacy
 
-Runtime databases, real host addresses, credentials, and local deployment configuration must never be committed to the public repository.
+Never commit runtime databases, real server or Tailscale addresses, tokens, credentials, or personal project data. The repository contains code and safe example configuration only.
