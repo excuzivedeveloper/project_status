@@ -19,7 +19,6 @@ DefaultDirName={localappdata}\Programs\Project Status
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 OutputBaseFilename=ProjectStatus-Setup-v{#MyAppVersion}
-SetupIconFile=..\ProjectStatus.Client\Assets\project_status.ico
 UninstallDisplayIcon={app}\ProjectStatus.exe
 Compression=lzma2
 SolidCompression=yes
