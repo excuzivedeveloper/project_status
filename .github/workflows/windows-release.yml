@@ -1,0 +1,68 @@
+name: Windows release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Resolve version
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart("v", "V")
+          if ($version -notmatch '^\d+\.\d+\.\d+$') {
+            throw "Release tag must be vMAJOR.MINOR.PATCH."
+          }
+          "VERSION=$version" >> $env:GITHUB_ENV
+      - name: Publish self-contained win-x64
+        shell: pwsh
+        run: |
+          dotnet publish .\client\ProjectStatus.Client\ProjectStatus.Client.csproj `
+            -c Release `
+            -r win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:Version=$env:VERSION `
+            -o .\artifacts\win-x64
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $publishDir = (Resolve-Path ".\artifacts\win-x64").Path
+          New-Item -ItemType Directory -Path ".\artifacts\installer" -Force | Out-Null
+          $outputDir = (Resolve-Path ".\artifacts\installer").Path
+          $iscc = (Get-Command ISCC.exe -ErrorAction Stop).Source
+          & $iscc "/DMyAppVersion=$env:VERSION" "/DPublishDir=$publishDir" "/O$outputDir" ".\client\installer\project_status.iss"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $installer = "$outputDir\ProjectStatus-Setup-v$env:VERSION.exe"
+          if (-not (Test-Path $installer)) {
+            throw "Installer was not produced."
+          }
+          (Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant() + "  " + (Split-Path $installer -Leaf) |
+            Set-Content "$installer.sha256"
+      - name: Create or update GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $installer = ".\artifacts\installer\ProjectStatus-Setup-v$env:VERSION.exe"
+          $checksum = "$installer.sha256"
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag $installer $checksum --clobber
+          }
+          else {
+            gh release create $tag $installer $checksum --title "Project Status $tag" --generate-notes
+          }
