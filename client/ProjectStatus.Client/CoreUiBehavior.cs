@@ -42,9 +42,9 @@ internal static class CoreUiBehavior
         grid.MouseDown += (_, e) =>
         {
             var hit = grid.HitTest(e.X, e.Y);
-            if (hit.RowIndex < 0 && hit.ColumnIndex < 0)
+            if (hit.Type == DataGridViewHitTestType.None)
             {
-                EndEditIfNeeded(grid);
+                CommitAndLeaveCurrentCell(grid);
             }
         };
 
@@ -138,6 +138,9 @@ internal static class CoreUiBehavior
                 continue;
             }
 
+            // Toolbar actions must save an in-progress text edit but keep the current
+            // row selected so Delete and other row-oriented actions still know which
+            // project the user was working with.
             button.MouseDown += (_, _) => EndEditIfNeeded(grid);
         }
     }
@@ -158,7 +161,28 @@ internal static class CoreUiBehavior
             return;
         }
 
-        grid.BeginInvoke(new Action(() => EndEditIfNeeded(grid)));
+        // Run after the key event unwinds so DataGridView can finish its own editing
+        // control processing, then visibly leave the edited cell after committing it.
+        grid.BeginInvoke(new Action(() => CommitAndLeaveCurrentCell(grid)));
+    }
+
+    private static void CommitAndLeaveCurrentCell(DataGridView grid)
+    {
+        if (grid.IsDisposed)
+        {
+            return;
+        }
+
+        if (grid.IsCurrentCellInEditMode && !grid.EndEdit())
+        {
+            return;
+        }
+
+        // EndEdit commits the value but DataGridView intentionally keeps CurrentCell
+        // selected. Clearing it makes Enter / blank-area click behave like a completed
+        // edit instead of leaving the edited cell visually active.
+        grid.CurrentCell = null;
+        grid.ClearSelection();
     }
 
     private static void EndEditIfNeeded(DataGridView grid)
