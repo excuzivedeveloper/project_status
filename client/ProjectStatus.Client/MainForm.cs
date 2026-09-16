@@ -319,7 +319,7 @@ internal sealed class MainForm : Form
             }
 
             var status = _state.Statuses.FirstOrDefault(item => item.Id == id);
-            if (status is null)
+            if (status is null || e.CellStyle is not DataGridViewCellStyle style)
             {
                 return;
             }
@@ -328,10 +328,10 @@ internal sealed class MainForm : Form
             {
                 var color = ColorTranslator.FromHtml(status.Color);
                 var textColor = GetContrastingTextColor(color);
-                e.CellStyle.BackColor = color;
-                e.CellStyle.ForeColor = textColor;
-                e.CellStyle.SelectionBackColor = color;
-                e.CellStyle.SelectionForeColor = textColor;
+                style.BackColor = color;
+                style.ForeColor = textColor;
+                style.SelectionBackColor = color;
+                style.SelectionForeColor = textColor;
             }
             catch
             {
