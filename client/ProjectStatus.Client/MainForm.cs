@@ -59,12 +59,7 @@ internal sealed class MainForm : Form
         // toolbar button is filled with an accent color instead.
         toolStrip.Renderer = new PinCheckedRenderer();
 
-        var addButton = new ToolStripButton("+ Project");
-        addButton.Click += async (_, _) => await AddProjectAsync();
-
-        var deleteButton = new ToolStripButton("Delete");
-        deleteButton.Click += async (_, _) => await DeleteSelectedProjectAsync();
-
+        // Project lifecycle lives in Settings now, so the toolbar only carries Settings and Pin.
         var settingsButton = new ToolStripButton("Settings");
         settingsButton.Click += async (_, _) => await ShowSettingsDialogAsync();
 
@@ -82,18 +77,12 @@ internal sealed class MainForm : Form
             }
         };
 
-        toolStrip.Items.Add(addButton);
-        toolStrip.Items.Add(deleteButton);
-        toolStrip.Items.Add(new ToolStripSeparator());
         toolStrip.Items.Add(settingsButton);
         toolStrip.Items.Add(_pinButton);
 
         // Toolbar actions run against the row the user was working in, so a pending text edit is
         // committed on mouse down and the caret is parked on that same row.
-        foreach (var button in new[] { addButton, deleteButton, settingsButton })
-        {
-            button.MouseDown += (_, _) => CommitPendingGridEdit();
-        }
+        settingsButton.MouseDown += (_, _) => CommitPendingGridEdit();
 
         UpdatePinVisual(settings.AlwaysOnTop);
 
@@ -295,13 +284,14 @@ internal sealed class MainForm : Form
             SelectionMode = DataGridViewSelectionMode.CellSelect
         };
 
+        // Read-only: a project is renamed in Settings, never by typing into the grid.
         grid.Columns.Add(new DataGridViewTextBoxColumn
         {
             Name = NameColumn,
             HeaderText = "Project",
             AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill,
             FillWeight = 24,
-            MaxInputLength = 100
+            ReadOnly = true
         });
 
         grid.Columns.Add(new DataGridViewComboBoxColumn
@@ -575,54 +565,6 @@ internal sealed class MainForm : Form
         return result;
     }
 
-    private async Task AddProjectAsync()
-    {
-        var name = PromptDialog.Show(this, "New project", "Project name:");
-        if (string.IsNullOrWhiteSpace(name))
-        {
-            return;
-        }
-
-        var paused = _state.Statuses.FirstOrDefault(status =>
-            string.Equals(status.Name, "Paused", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(status.Name, "На паузе", StringComparison.OrdinalIgnoreCase));
-
-        await RunMutationAsync(async () =>
-        {
-            await _api.CreateProjectAsync(new ProjectPayload
-            {
-                Name = name.Trim(),
-                StatusId = paused?.Id,
-                DeviceId = null,
-                Note = string.Empty
-            });
-        });
-    }
-
-    private async Task DeleteSelectedProjectAsync()
-    {
-        var project = SelectedProject();
-        if (project is null)
-        {
-            return;
-        }
-
-        var result = MessageBox.Show(
-            this,
-            $"Delete project '{project.Name}'?",
-            "Project Status",
-            MessageBoxButtons.YesNo,
-            MessageBoxIcon.Warning,
-            MessageBoxDefaultButton.Button2);
-
-        if (result != DialogResult.Yes)
-        {
-            return;
-        }
-
-        await RunMutationAsync(() => _api.DeleteProjectAsync(project.Id));
-    }
-
     private ProjectDto? SelectedProject()
     {
         return _grid.CurrentCell?.OwningRow?.Tag as ProjectDto;
@@ -692,29 +634,6 @@ internal sealed class MainForm : Form
         {
             SetSyncOfflineIfNetwork(ex);
             ShowError(ex.Message);
-        }
-        finally
-        {
-            _apiGate.Release();
-        }
-
-        await RefreshStateAsync(force: true);
-    }
-
-    private async Task RunMutationAsync(Func<Task> action)
-    {
-        await _apiGate.WaitAsync();
-        try
-        {
-            await action();
-            SetSyncOk();
-            _stateSignature = string.Empty;
-        }
-        catch (Exception ex)
-        {
-            SetSyncOfflineIfNetwork(ex);
-            ShowError(ex.Message);
-            return;
         }
         finally
         {

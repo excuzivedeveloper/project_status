@@ -7,6 +7,7 @@ internal sealed class SettingsForm : Form
     private readonly ComboBox _localDeviceCombo;
     private readonly CheckBox _alwaysOnTopCheck;
     private readonly CheckBox _autostartCheck;
+    private readonly ListBox _projectsList;
     private readonly ListBox _statusesList;
     private readonly ListBox _devicesList;
     private readonly Label _connectionLabel;
@@ -82,6 +83,7 @@ internal sealed class SettingsForm : Form
         root.Controls.Add(connectionPanel, 1, 3);
 
         var tabs = new TabControl { Dock = DockStyle.Fill };
+        _projectsList = new ListBox { Dock = DockStyle.Fill };
         _statusesList = new ListBox
         {
             Dock = DockStyle.Fill,
@@ -90,6 +92,7 @@ internal sealed class SettingsForm : Form
         };
         _statusesList.DrawItem += DrawStatusItem;
         _devicesList = new ListBox { Dock = DockStyle.Fill };
+        tabs.TabPages.Add(BuildProjectsTab());
         tabs.TabPages.Add(BuildStatusesTab());
         tabs.TabPages.Add(BuildDevicesTab());
         root.Controls.Add(tabs, 0, 4);
@@ -114,6 +117,29 @@ internal sealed class SettingsForm : Form
         CancelButton = cancelButton;
 
         Shown += async (_, _) => await ReloadSharedAsync(showError: false);
+    }
+
+    private TabPage BuildProjectsTab()
+    {
+        var page = new TabPage("Projects");
+        var layout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 2,
+            Padding = new Padding(6)
+        };
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        layout.Controls.Add(_projectsList, 0, 0);
+
+        var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true };
+        buttons.Controls.Add(ActionButton("Add", async () => await AddProjectAsync()));
+        buttons.Controls.Add(ActionButton("Rename", async () => await RenameProjectAsync()));
+        buttons.Controls.Add(ActionButton("Delete", async () => await DeleteProjectAsync()));
+        layout.Controls.Add(buttons, 0, 1);
+        page.Controls.Add(layout);
+        return page;
     }
 
     private TabPage BuildStatusesTab()
@@ -195,6 +221,13 @@ internal sealed class SettingsForm : Form
             var state = await api.GetStateAsync();
 
             var localText = _localDeviceCombo.Text;
+
+            _projectsList.Items.Clear();
+            foreach (var project in state.Projects)
+            {
+                _projectsList.Items.Add(project);
+            }
+
             _statusesList.Items.Clear();
             foreach (var status in state.Statuses)
             {
@@ -217,6 +250,80 @@ internal sealed class SettingsForm : Form
                 ShowError(ex.Message);
             }
         }
+    }
+
+    // Project lifecycle moved here from the main window: the grid no longer creates, renames or
+    // deletes projects. Every operation re-reads the shared state afterwards, so a rejected call
+    // never leaves the dialog showing something the server did not accept.
+    private async Task AddProjectAsync()
+    {
+        var name = PromptDialog.Show(this, "Add project", "Project name:");
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return;
+        }
+
+        await RunSharedMutationAsync(api => api.CreateProjectAsync(new ProjectPayload
+        {
+            Name = name.Trim(),
+            StatusId = FindPausedStatusId(),
+            DeviceId = null,
+            Note = string.Empty
+        }));
+    }
+
+    private async Task RenameProjectAsync()
+    {
+        if (_projectsList.SelectedItem is not ProjectDto project)
+        {
+            return;
+        }
+
+        var name = PromptDialog.Show(this, "Rename project", "Project name:", project.Name);
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return;
+        }
+
+        await RunSharedMutationAsync(api => api.UpdateProjectAsync(project.Id, new ProjectPayload
+        {
+            Name = name.Trim(),
+            StatusId = project.StatusId,
+            DeviceId = project.DeviceId,
+            Note = project.Note
+        }));
+    }
+
+    private async Task DeleteProjectAsync()
+    {
+        if (_projectsList.SelectedItem is not ProjectDto project)
+        {
+            return;
+        }
+
+        if (MessageBox.Show(this, $"Delete project '{project.Name}'?", "Project Status",
+                MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) != DialogResult.Yes)
+        {
+            return;
+        }
+
+        await RunSharedMutationAsync(async api =>
+        {
+            await api.DeleteProjectAsync(project.Id);
+            return project;
+        });
+    }
+
+    // A new project starts in the "Paused" stage when the server has one, which keeps the previous
+    // main-window behaviour after the button moved here.
+    private int? FindPausedStatusId()
+    {
+        return _statusesList.Items
+            .OfType<StatusDto>()
+            .FirstOrDefault(status =>
+                string.Equals(status.Name, "Paused", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(status.Name, "На паузе", StringComparison.OrdinalIgnoreCase))
+            ?.Id;
     }
 
     private async Task AddStatusAsync()
