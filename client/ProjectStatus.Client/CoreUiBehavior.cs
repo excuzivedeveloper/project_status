@@ -29,35 +29,11 @@ internal static class CoreUiBehavior
 
     private static void Attach(MainForm form)
     {
-        var grid = FindControl<DataGridView>(form);
         var toolStrip = FindControl<ToolStrip>(form);
-        if (grid is null || toolStrip is null)
+        if (toolStrip is null)
         {
             return;
         }
-
-        grid.Leave += (_, _) => EndEditIfNeeded(grid);
-        form.Deactivate += (_, _) => EndEditIfNeeded(grid);
-
-        grid.MouseDown += (_, e) =>
-        {
-            var hit = grid.HitTest(e.X, e.Y);
-            if (hit.Type == DataGridViewHitTestType.None)
-            {
-                CommitAndLeaveCurrentCell(grid);
-            }
-        };
-
-        grid.EditingControlShowing += (_, e) =>
-        {
-            if (e.Control is not TextBox textBox)
-            {
-                return;
-            }
-
-            textBox.KeyDown -= OnEditingTextBoxKeyDown;
-            textBox.KeyDown += OnEditingTextBoxKeyDown;
-        };
 
         var pinButton = toolStrip.Items
             .OfType<ToolStripButton>()
@@ -78,7 +54,11 @@ internal static class CoreUiBehavior
                 return;
             }
 
-            EndEditIfNeeded(grid);
+            // Settings and the other owned dialogs are modal. The grid edit has to be committed
+            // before the modal loop takes over: the main form cannot end it while a dialog owns the
+            // message loop, and a session left open there keeps the grid from being refreshed.
+            form.CommitPendingGridEdit();
+
             if (form.TopMost)
             {
                 // WinForms exposes modal-loop lifecycle directly. Temporarily drop
@@ -130,82 +110,6 @@ internal static class CoreUiBehavior
         Application.EnterThreadModal += enterModalHandler;
         Application.LeaveThreadModal += leaveModalHandler;
         form.Disposed += disposedHandler;
-
-        foreach (var button in toolStrip.Items.OfType<ToolStripButton>())
-        {
-            if (button.Text is not ("+ Project" or "Delete" or "Settings"))
-            {
-                continue;
-            }
-
-            // Toolbar actions must save an in-progress text edit but keep the current
-            // row selected so Delete and other row-oriented actions still know which
-            // project the user was working with.
-            button.MouseDown += (_, _) => EndEditIfNeeded(grid);
-        }
-    }
-
-    private static void OnEditingTextBoxKeyDown(object? sender, KeyEventArgs e)
-    {
-        if (e.KeyCode != Keys.Enter || sender is not Control editingControl)
-        {
-            return;
-        }
-
-        e.Handled = true;
-        e.SuppressKeyPress = true;
-
-        var grid = FindParentGrid(editingControl);
-        if (grid is null || grid.IsDisposed)
-        {
-            return;
-        }
-
-        // Run after the key event unwinds so DataGridView can finish its own editing
-        // control processing, then visibly leave the edited cell after committing it.
-        grid.BeginInvoke(new Action(() => CommitAndLeaveCurrentCell(grid)));
-    }
-
-    private static void CommitAndLeaveCurrentCell(DataGridView grid)
-    {
-        if (grid.IsDisposed)
-        {
-            return;
-        }
-
-        if (grid.IsCurrentCellInEditMode && !grid.EndEdit())
-        {
-            return;
-        }
-
-        // EndEdit commits the value but DataGridView intentionally keeps CurrentCell
-        // selected. Clearing it makes Enter / blank-area click behave like a completed
-        // edit instead of leaving the edited cell visually active.
-        grid.CurrentCell = null;
-        grid.ClearSelection();
-    }
-
-    private static void EndEditIfNeeded(DataGridView grid)
-    {
-        if (grid.IsDisposed || !grid.IsCurrentCellInEditMode)
-        {
-            return;
-        }
-
-        grid.EndEdit();
-    }
-
-    private static DataGridView? FindParentGrid(Control control)
-    {
-        for (Control? current = control.Parent; current is not null; current = current.Parent)
-        {
-            if (current is DataGridView grid)
-            {
-                return grid;
-            }
-        }
-
-        return null;
     }
 
     private static T? FindControl<T>(Control root) where T : Control
