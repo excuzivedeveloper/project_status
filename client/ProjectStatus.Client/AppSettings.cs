@@ -15,7 +15,17 @@ internal sealed class AppSettings
     // (start hidden) until the user opens or hides the window once.
     public bool MainWindowVisible { get; set; }
 
+    // Compact keeps its own geometry, so switching modes leaves the other layout where it was.
+    public bool CompactMode { get; set; }
+    public int? CompactWindowX { get; set; }
+    public int? CompactWindowY { get; set; }
+    public int CompactWindowWidth { get; set; } = 240;
+    public int CompactWindowHeight { get; set; } = 300;
+
     public string LastUpdatePromptVersion { get; set; } = string.Empty;
+
+    // Full mode geometry. These four keep their original names so an existing settings.json loads
+    // unchanged.
     public int? WindowX { get; set; }
     public int? WindowY { get; set; }
     public int WindowWidth { get; set; } = 760;

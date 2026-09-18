@@ -12,11 +12,16 @@ internal sealed class MainForm : Form
     private const string NoteColumn = "note";
     private const string UpdatedColumn = "updated";
     private static readonly Color PinActiveBackColor = Color.FromArgb(0, 120, 215);
+    private static readonly Size FullMinimumSize = new(620, 260);
+    private static readonly Size CompactMinimumSize = new(200, 120);
 
     private readonly AppSettings _settings;
     private readonly ApiClient _api;
     private readonly DataGridView _grid;
     private readonly ToolStripButton _pinButton;
+    private readonly ToolStripButton _settingsButton;
+    private readonly ToolStripButton _modeButton;
+    private readonly StatusStrip _statusStrip;
     private readonly ToolStripStatusLabel _syncLabel;
     private readonly ToolStripStatusLabel _deviceLabel;
     private readonly System.Windows.Forms.Timer _pollTimer;
@@ -27,6 +32,7 @@ internal sealed class MainForm : Form
     private bool _binding;
     private bool _syncingPin;
     private bool _allowExit;
+    private bool _compact;
 
     public event EventHandler? AlwaysOnTopChanged;
 
@@ -36,10 +42,10 @@ internal sealed class MainForm : Form
         _api = api;
 
         Text = "Project Status";
-        MinimumSize = new Size(620, 260);
         StartPosition = FormStartPosition.Manual;
         ShowInTaskbar = false;
         TopMost = settings.AlwaysOnTop;
+        _compact = settings.CompactMode;
         RestoreWindowBounds();
 
         var icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
@@ -59,9 +65,16 @@ internal sealed class MainForm : Form
         // toolbar button is filled with an accent color instead.
         toolStrip.Renderer = new PinCheckedRenderer();
 
-        // Project lifecycle lives in Settings now, so the toolbar only carries Settings and Pin.
-        var settingsButton = new ToolStripButton("Settings");
-        settingsButton.Click += async (_, _) => await ShowSettingsDialogAsync();
+        // Project lifecycle lives in Settings now, so the toolbar only carries the mode switch,
+        // Settings and Pin.
+        _settingsButton = new ToolStripButton("Settings");
+        _settingsButton.Click += async (_, _) => await ShowSettingsDialogAsync();
+
+        _modeButton = new ToolStripButton("Compact")
+        {
+            ToolTipText = "Show only the project and its status"
+        };
+        _modeButton.Click += (_, _) => SetCompactMode(!_compact);
 
         _pinButton = new ToolStripButton("Pin")
         {
@@ -77,29 +90,33 @@ internal sealed class MainForm : Form
             }
         };
 
-        toolStrip.Items.Add(settingsButton);
+        toolStrip.Items.Add(_modeButton);
+        toolStrip.Items.Add(_settingsButton);
         toolStrip.Items.Add(_pinButton);
 
         // Toolbar actions run against the row the user was working in, so a pending text edit is
         // committed on mouse down and the caret is parked on that same row.
-        settingsButton.MouseDown += (_, _) => CommitPendingGridEdit();
+        _settingsButton.MouseDown += (_, _) => CommitPendingGridEdit();
+        _modeButton.MouseDown += (_, _) => CommitPendingGridEdit();
 
         UpdatePinVisual(settings.AlwaysOnTop);
 
         _grid = BuildGrid();
         _grid.Dock = DockStyle.Fill;
 
-        var statusStrip = new StatusStrip();
+        _statusStrip = new StatusStrip();
         _syncLabel = new ToolStripStatusLabel("No connection");
         var spring = new ToolStripStatusLabel { Spring = true };
         _deviceLabel = new ToolStripStatusLabel($"This PC: {settings.LocalDeviceName}");
-        statusStrip.Items.Add(_syncLabel);
-        statusStrip.Items.Add(spring);
-        statusStrip.Items.Add(_deviceLabel);
+        _statusStrip.Items.Add(_syncLabel);
+        _statusStrip.Items.Add(spring);
+        _statusStrip.Items.Add(_deviceLabel);
 
         Controls.Add(_grid);
         Controls.Add(toolStrip);
-        Controls.Add(statusStrip);
+        Controls.Add(_statusStrip);
+
+        ApplyModeLayout();
 
         _pollTimer = new System.Windows.Forms.Timer { Interval = PollIntervalMs };
         _pollTimer.Tick += async (_, _) => await RefreshStateAsync(force: false);
@@ -191,10 +208,26 @@ internal sealed class MainForm : Form
             return;
         }
 
-        _settings.WindowX = bounds.X;
-        _settings.WindowY = bounds.Y;
-        _settings.WindowWidth = Math.Max(MinimumSize.Width, bounds.Width);
-        _settings.WindowHeight = Math.Max(MinimumSize.Height, bounds.Height);
+        var minimum = _compact ? CompactMinimumSize : FullMinimumSize;
+        var width = Math.Max(minimum.Width, bounds.Width);
+        var height = Math.Max(minimum.Height, bounds.Height);
+
+        // Full and Compact keep their own geometry, so switching modes does not move the other one.
+        if (_compact)
+        {
+            _settings.CompactWindowX = bounds.X;
+            _settings.CompactWindowY = bounds.Y;
+            _settings.CompactWindowWidth = width;
+            _settings.CompactWindowHeight = height;
+        }
+        else
+        {
+            _settings.WindowX = bounds.X;
+            _settings.WindowY = bounds.Y;
+            _settings.WindowWidth = width;
+            _settings.WindowHeight = height;
+        }
+
         _settings.AlwaysOnTop = TopMost;
         _settings.MainWindowVisible = Visible;
         AppSettingsStore.Save(_settings);
@@ -257,7 +290,55 @@ internal sealed class MainForm : Form
             return;
         }
 
-        _grid.CurrentCell = row.Cells[UpdatedColumn];
+        // Compact hides the Updated column and the current cell cannot sit in a hidden column, so
+        // the read-only Project cell is the parking spot there.
+        _grid.CurrentCell = row.Cells[_compact ? NameColumn : UpdatedColumn];
+    }
+
+    public bool IsCompact => _compact;
+
+    public void SetCompactMode(bool compact)
+    {
+        if (_compact == compact)
+        {
+            return;
+        }
+
+        // Store this mode's geometry before the layout changes, then bring the other one back.
+        CommitPendingGridEdit();
+        CaptureWindowSettings();
+
+        _compact = compact;
+        _settings.CompactMode = compact;
+        AppSettingsStore.Save(_settings);
+
+        ApplyModeLayout();
+        RestoreWindowBounds();
+    }
+
+    // Compact shows only the project and its status. Everything stays in the same window: no second
+    // form, no second window type and no new top-level window.
+    private void ApplyModeLayout()
+    {
+        // A maximized or snapped window would otherwise hand its geometry to the smaller layout.
+        if (WindowState != FormWindowState.Normal)
+        {
+            WindowState = FormWindowState.Normal;
+        }
+
+        _grid.Columns[DeviceColumn].Visible = !_compact;
+        _grid.Columns[NoteColumn].Visible = !_compact;
+        _grid.Columns[UpdatedColumn].Visible = !_compact;
+        _statusStrip.Visible = !_compact;
+        _settingsButton.Visible = !_compact;
+        _modeButton.Text = _compact ? "Full" : "Compact";
+
+        // Windows edge snapping needs WS_MAXIMIZEBOX, so dropping it disables snapping for this
+        // window only. WS_THICKFRAME stays, which keeps the standard frame and manual resizing.
+        // Full restores the flag, so native snapping behaves as usual again.
+        MaximizeBox = !_compact;
+
+        MinimumSize = _compact ? CompactMinimumSize : FullMinimumSize;
     }
 
     private bool IsTextColumn(int columnIndex)
@@ -728,27 +809,25 @@ internal sealed class MainForm : Form
 
     private void RestoreWindowBounds()
     {
-        var width = Math.Max(MinimumSize.Width, _settings.WindowWidth);
-        var height = Math.Max(MinimumSize.Height, _settings.WindowHeight);
+        var minimum = _compact ? CompactMinimumSize : FullMinimumSize;
+        MinimumSize = minimum;
 
-        if (_settings.WindowX is int x && _settings.WindowY is int y)
-        {
-            var desired = new Rectangle(x, y, width, height);
-            if (Screen.AllScreens.Any(screen => screen.WorkingArea.IntersectsWith(desired)))
-            {
-                Bounds = desired;
-                return;
-            }
-        }
+        var savedX = _compact ? _settings.CompactWindowX : _settings.WindowX;
+        var savedY = _compact ? _settings.CompactWindowY : _settings.WindowY;
+        var savedWidth = _compact ? _settings.CompactWindowWidth : _settings.WindowWidth;
+        var savedHeight = _compact ? _settings.CompactWindowHeight : _settings.WindowHeight;
 
-        var working = Screen.PrimaryScreen?.WorkingArea ?? new Rectangle(0, 0, 1280, 720);
-        width = Math.Min(width, working.Width);
-        height = Math.Min(height, working.Height);
-        Bounds = new Rectangle(
-            working.Right - width - 24,
-            working.Top + 24,
-            width,
-            height);
+        var primary = Screen.PrimaryScreen?.WorkingArea ?? new Rectangle(0, 0, 1280, 720);
+        var workingAreas = Screen.AllScreens.Select(screen => screen.WorkingArea).ToList();
+
+        Bounds = WindowBounds.Resolve(
+            savedX,
+            savedY,
+            savedWidth,
+            savedHeight,
+            minimum,
+            primary,
+            workingAreas);
     }
 
     private void OnFormClosing(object? sender, FormClosingEventArgs e)
