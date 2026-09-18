@@ -22,6 +22,22 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "8.0.x"
+      - name: Read client version
+        id: client_version
+        shell: pwsh
+        run: |
+          [xml] $project = Get-Content -Raw .\client\ProjectStatus.Client\ProjectStatus.Client.csproj
+          $version = @($project.Project.PropertyGroup.Version) |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+            Select-Object -First 1
+          if ([string]::IsNullOrWhiteSpace($version)) {
+            throw "Could not read <Version> from ProjectStatus.Client.csproj."
+          }
+          if ($version -notmatch '^\d+\.\d+\.\d+') {
+            throw "Unexpected <Version> value in ProjectStatus.Client.csproj: '$version'."
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          Write-Host "Client version: $version"
       - name: Build
         run: dotnet build .\client\ProjectStatus.Client\ProjectStatus.Client.csproj -c Release
       - name: Publish self-contained win-x64
@@ -31,17 +47,19 @@ jobs:
       - name: Build installer
         shell: pwsh
         run: |
+          $version = "${{ steps.client_version.outputs.version }}"
           $publishDir = (Resolve-Path ".\artifacts\win-x64").Path
           New-Item -ItemType Directory -Path ".\artifacts\installer" -Force | Out-Null
           $outputDir = (Resolve-Path ".\artifacts\installer").Path
           $iscc = (Get-Command ISCC.exe -ErrorAction Stop).Source
-          & $iscc "/DMyAppVersion=0.1.0" "/DPublishDir=$publishDir" "/O$outputDir" ".\client\installer\project_status.iss"
+          & $iscc "/DMyAppVersion=$version" "/DPublishDir=$publishDir" "/O$outputDir" ".\client\installer\project_status.iss"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          if (-not (Test-Path "$outputDir\ProjectStatus-Setup-v0.1.0.exe")) {
-            throw "Installer was not produced."
+          $installer = "$outputDir\ProjectStatus-Setup-v$version.exe"
+          if (-not (Test-Path $installer)) {
+            throw "Installer was not produced: expected $(Split-Path $installer -Leaf)."
           }
       - uses: actions/upload-artifact@v4
         with:
           name: ProjectStatus-installer-ci
-          path: artifacts/installer/ProjectStatus-Setup-v0.1.0.exe
+          path: artifacts/installer/ProjectStatus-Setup-v${{ steps.client_version.outputs.version }}.exe
           if-no-files-found: error
