@@ -81,6 +81,9 @@ internal sealed class TrayApplicationContext : ApplicationContext
                 Application.Idle -= idleHandler;
             }
 
+            // Diagnostic half of the corrective tray delta: eagerly create the hidden form handle.
+            _ = _mainForm.Handle;
+
             _mainForm.StartPolling();
             _ = CheckForUpdatesAsync();
             if (!startHidden)
@@ -89,6 +92,9 @@ internal sealed class TrayApplicationContext : ApplicationContext
             }
 
             _singleInstance.StartListening(OnActivationRequested);
+
+            // Diagnostic half of the corrective tray delta: apply any startup-race activation.
+            ApplyPendingActivation();
         };
         Application.Idle += idleHandler;
     }
