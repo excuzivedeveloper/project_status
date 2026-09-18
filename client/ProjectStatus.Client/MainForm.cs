@@ -21,6 +21,7 @@ internal sealed class MainForm : Form
     private readonly ToolStripButton _pinButton;
     private readonly ToolStripButton _settingsButton;
     private readonly ToolStripButton _modeButton;
+    private readonly ToolStrip _toolStrip;
     private readonly StatusStrip _statusStrip;
     private readonly ToolStripStatusLabel _syncLabel;
     private readonly ToolStripStatusLabel _deviceLabel;
@@ -33,6 +34,7 @@ internal sealed class MainForm : Form
     private bool _syncingPin;
     private bool _allowExit;
     private bool _compact;
+    private bool _syncIsOk;
 
     public event EventHandler? AlwaysOnTopChanged;
 
@@ -54,7 +56,7 @@ internal sealed class MainForm : Form
             Icon = icon;
         }
 
-        var toolStrip = new ToolStrip
+        _toolStrip = new ToolStrip
         {
             GripStyle = ToolStripGripStyle.Hidden,
             Dock = DockStyle.Top,
@@ -63,7 +65,7 @@ internal sealed class MainForm : Form
 
         // The stock checked-state rendering is too subtle to show that Pin is on, so a checked
         // toolbar button is filled with an accent color instead.
-        toolStrip.Renderer = new PinCheckedRenderer();
+        _toolStrip.Renderer = new PinCheckedRenderer();
 
         // Project lifecycle lives in Settings now, so the toolbar only carries the mode switch,
         // Settings and Pin.
@@ -90,9 +92,9 @@ internal sealed class MainForm : Form
             }
         };
 
-        toolStrip.Items.Add(_modeButton);
-        toolStrip.Items.Add(_settingsButton);
-        toolStrip.Items.Add(_pinButton);
+        _toolStrip.Items.Add(_modeButton);
+        _toolStrip.Items.Add(_settingsButton);
+        _toolStrip.Items.Add(_pinButton);
 
         // Toolbar actions run against the row the user was working in, so a pending text edit is
         // committed on mouse down and the caret is parked on that same row.
@@ -113,10 +115,11 @@ internal sealed class MainForm : Form
         _statusStrip.Items.Add(_deviceLabel);
 
         Controls.Add(_grid);
-        Controls.Add(toolStrip);
+        Controls.Add(_toolStrip);
         Controls.Add(_statusStrip);
 
         ApplyModeLayout();
+        ApplyAppearance();
 
         _pollTimer = new System.Windows.Forms.Timer { Interval = PollIntervalMs };
         _pollTimer.Tick += async (_, _) => await RefreshStateAsync(force: false);
@@ -257,6 +260,7 @@ internal sealed class MainForm : Form
             AutostartManager.Apply(_settings.StartWithWindows);
             _deviceLabel.Text = $"This PC: {_settings.LocalDeviceName}";
             SetAlwaysOnTop(_settings.AlwaysOnTop);
+            ApplyAppearance();
             _stateSignature = string.Empty;
 
             // Settings edits statuses and devices on the server. The main form has to show them when
@@ -313,7 +317,50 @@ internal sealed class MainForm : Form
         AppSettingsStore.Save(_settings);
 
         ApplyModeLayout();
+        ApplyAppearance();
         RestoreWindowBounds();
+    }
+
+    // One background colour for the ordinary surfaces, compact-only opacity, and text colour derived
+    // from the background so labels stay readable. Status cells keep the colours the server assigns.
+    private void ApplyAppearance()
+    {
+        var background = AppearanceSettings.ParseBackgroundColor(_settings.BackgroundColor);
+        var custom = !background.IsEmpty;
+
+        // Full mode is always fully opaque; the opacity setting belongs to Compact alone.
+        Opacity = _compact ? AppearanceSettings.ToOpacity(_settings.CompactOpacity) : 1.0;
+
+        var surface = custom ? background : SystemColors.Control;
+        var text = custom ? GetContrastingTextColor(background) : SystemColors.ControlText;
+
+        BackColor = surface;
+        ForeColor = text;
+
+        _toolStrip.BackColor = surface;
+        _toolStrip.ForeColor = text;
+
+        var gridBackground = custom ? background : SystemColors.Window;
+        _grid.BackgroundColor = gridBackground;
+        _grid.GridColor = custom ? ControlPaint.Dark(background) : SystemColors.ControlDark;
+        _grid.EnableHeadersVisualStyles = !custom;
+        _grid.DefaultCellStyle.BackColor = gridBackground;
+        _grid.DefaultCellStyle.ForeColor = custom ? text : SystemColors.WindowText;
+        _grid.DefaultCellStyle.SelectionBackColor = custom ? ControlPaint.Dark(background) : SystemColors.Highlight;
+        _grid.DefaultCellStyle.SelectionForeColor = custom ? text : SystemColors.HighlightText;
+        _grid.ColumnHeadersDefaultCellStyle.BackColor = surface;
+        _grid.ColumnHeadersDefaultCellStyle.ForeColor = text;
+        _grid.Invalidate();
+
+        _statusStrip.BackColor = surface;
+        _statusStrip.ForeColor = text;
+        foreach (ToolStripItem item in _statusStrip.Items)
+        {
+            item.ForeColor = text;
+        }
+
+        // The sync label carries a state colour of its own; recompute it for the new background.
+        ApplySyncLabel();
     }
 
     // Compact shows only the project and its status. Everything stays in the same window: no second
@@ -734,14 +781,25 @@ internal sealed class MainForm : Form
 
     private void SetSyncOk()
     {
-        _syncLabel.Text = "Sync: OK";
-        _syncLabel.ForeColor = Color.DarkGreen;
+        _syncIsOk = true;
+        ApplySyncLabel();
     }
 
     private void SetSyncOffline()
     {
-        _syncLabel.Text = "No connection";
-        _syncLabel.ForeColor = Color.Firebrick;
+        _syncIsOk = false;
+        ApplySyncLabel();
+    }
+
+    // The state colours are the readable pair for whichever background is in use.
+    private void ApplySyncLabel()
+    {
+        var custom = !AppearanceSettings.ParseBackgroundColor(_settings.BackgroundColor).IsEmpty;
+
+        _syncLabel.Text = _syncIsOk ? "Sync: OK" : "No connection";
+        _syncLabel.ForeColor = _syncIsOk
+            ? (custom ? Color.FromArgb(126, 231, 135) : Color.DarkGreen)
+            : (custom ? Color.FromArgb(255, 138, 128) : Color.Firebrick);
     }
 
     private void SetSyncOfflineIfNetwork(Exception ex)

@@ -22,6 +22,11 @@ internal sealed class AppSettings
     public int CompactWindowWidth { get; set; } = 240;
     public int CompactWindowHeight { get; set; } = 300;
 
+    // Appearance. CompactOpacity only affects Compact mode; Full is always fully opaque. An empty
+    // background means the system surface colours.
+    public int CompactOpacity { get; set; } = AppearanceSettings.DefaultOpacityPercent;
+    public string BackgroundColor { get; set; } = AppearanceSettings.DefaultBackgroundColor;
+
     public string LastUpdatePromptVersion { get; set; } = string.Empty;
 
     // Full mode geometry. These four keep their original names so an existing settings.json loads

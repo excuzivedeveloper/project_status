@@ -9,6 +9,7 @@
 [Setup]
 AppId={{A88A7B13-3C3E-45F5-A13C-85F3AC19D9C4}
 AppName=Project Status
+SetupIconFile=..\ProjectStatus.Client\Assets\project_status.ico
 AppVersion={#MyAppVersion}
 AppVerName=Project Status {#MyAppVersion}
 AppPublisher=Project Status
