@@ -148,6 +148,8 @@ internal sealed class MainForm : Form
 
         Activate();
         BringToFront();
+
+        SetMainWindowVisible(true);
     }
 
     public void HideToTray()
@@ -155,6 +157,21 @@ internal sealed class MainForm : Form
         CaptureWindowSettings();
         Hide();
         ShowInTaskbar = false;
+
+        SetMainWindowVisible(false);
+    }
+
+    // The --startup launch restores this, so the window comes back the way the user left it: open
+    // when it was open, hidden in the tray when it was hidden.
+    private void SetMainWindowVisible(bool visible)
+    {
+        if (_settings.MainWindowVisible == visible)
+        {
+            return;
+        }
+
+        _settings.MainWindowVisible = visible;
+        AppSettingsStore.Save(_settings);
     }
 
     public void SetAlwaysOnTop(bool value)
@@ -190,6 +207,7 @@ internal sealed class MainForm : Form
         _settings.WindowWidth = Math.Max(MinimumSize.Width, bounds.Width);
         _settings.WindowHeight = Math.Max(MinimumSize.Height, bounds.Height);
         _settings.AlwaysOnTop = TopMost;
+        _settings.MainWindowVisible = Visible;
         AppSettingsStore.Save(_settings);
     }
 

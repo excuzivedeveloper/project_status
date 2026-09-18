@@ -10,13 +10,16 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly NotifyIcon _notifyIcon;
     private readonly ToolStripMenuItem _alwaysOnTopItem;
     private readonly ToolStripMenuItem _updateItem;
+    private readonly SingleInstance _singleInstance;
+    private int _activationRequested;
     private Uri? _updateUri;
     private UpdatePromptForm? _updatePrompt;
     private bool _exiting;
 
-    public TrayApplicationContext(AppSettings settings, bool startHidden)
+    public TrayApplicationContext(AppSettings settings, bool startHidden, SingleInstance singleInstance)
     {
         _settings = settings;
+        _singleInstance = singleInstance;
         _api = new ApiClient(settings.ServerAddress);
         _mainForm = new MainForm(settings, _api);
         MainForm = _mainForm;
@@ -66,6 +69,10 @@ internal sealed class TrayApplicationContext : ApplicationContext
             _alwaysOnTopItem.Checked = _mainForm.TopMost;
         };
 
+        // The pipe listener reports on a background thread, so the request is only recorded there
+        // and applied here once the message queue goes idle.
+        Application.Idle += (_, _) => ApplyPendingActivation();
+
         EventHandler? idleHandler = null;
         idleHandler = (_, _) =>
         {
@@ -80,8 +87,25 @@ internal sealed class TrayApplicationContext : ApplicationContext
             {
                 _mainForm.ShowFromTray();
             }
+
+            _singleInstance.StartListening(OnActivationRequested);
         };
         Application.Idle += idleHandler;
+    }
+
+    private void OnActivationRequested()
+    {
+        Interlocked.Exchange(ref _activationRequested, 1);
+    }
+
+    private void ApplyPendingActivation()
+    {
+        if (_exiting || Interlocked.Exchange(ref _activationRequested, 0) == 0)
+        {
+            return;
+        }
+
+        _mainForm.ShowFromTray();
     }
 
     private async Task CheckForUpdatesAsync()

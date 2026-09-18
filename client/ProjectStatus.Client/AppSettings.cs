@@ -9,6 +9,12 @@ internal sealed class AppSettings
     public string LocalDeviceName { get; set; } = string.Empty;
     public bool AlwaysOnTop { get; set; }
     public bool StartWithWindows { get; set; } = true;
+
+    // Whether the main window was open when the app last stopped. A settings file written before
+    // this property existed deserializes to false, which keeps the previous startup behaviour
+    // (start hidden) until the user opens or hides the window once.
+    public bool MainWindowVisible { get; set; }
+
     public string LastUpdatePromptVersion { get; set; } = string.Empty;
     public int? WindowX { get; set; }
     public int? WindowY { get; set; }
