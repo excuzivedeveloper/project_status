@@ -11,6 +11,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly ToolStripMenuItem _alwaysOnTopItem;
     private readonly ToolStripMenuItem _updateItem;
     private Uri? _updateUri;
+    private UpdatePromptForm? _updatePrompt;
     private bool _exiting;
 
     public TrayApplicationContext(AppSettings settings, bool startHidden)
@@ -37,7 +38,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _updateItem.Click += (_, _) => OpenUpdateDownload();
 
         var settingsItem = new ToolStripMenuItem("Settings");
-        settingsItem.Click += (_, _) => _mainForm.ShowSettingsDialog();
+        settingsItem.Click += async (_, _) => await _mainForm.ShowSettingsDialogAsync();
 
         var exitItem = new ToolStripMenuItem("Exit");
         exitItem.Click += (_, _) => ExitApplication();
@@ -94,7 +95,33 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _updateUri = update.DownloadUri;
         _updateItem.Text = $"Update available v{update.Version}";
         _updateItem.Visible = true;
+        ShowUpdatePromptIfNeeded(update);
         _notifyIcon.Text = "Project Status — update available";
+    }
+
+    // The tray item is the fallback and stays visible. The popup is shown once per newer version:
+    // the offered version is remembered before the prompt appears, so dismissing it cannot make it
+    // come back on the next start while the same release is still the latest one.
+    private void ShowUpdatePromptIfNeeded(UpdateInfo update)
+    {
+        if (!UpdatePromptPolicy.ShouldPrompt(update.Version, _settings.LastUpdatePromptVersion))
+        {
+            return;
+        }
+
+        if (_updatePrompt is { IsDisposed: false })
+        {
+            return;
+        }
+
+        _settings.LastUpdatePromptVersion = update.Version;
+        AppSettingsStore.Save(_settings);
+
+        var prompt = new UpdatePromptForm(update.Version);
+        prompt.UpdateRequested += (_, _) => OpenUpdateDownload();
+        prompt.FormClosed += (_, _) => _updatePrompt = null;
+        _updatePrompt = prompt;
+        prompt.Show();
     }
 
     private void OpenUpdateDownload()
@@ -129,11 +156,13 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _mainForm.CaptureWindowSettings();
         AppSettingsStore.Save(_settings);
         _notifyIcon.Visible = false;
+        _updatePrompt?.Close();
         _mainForm.AllowExitAndClose();
     }
 
     protected override void ExitThreadCore()
     {
+        _updatePrompt?.Dispose();
         _notifyIcon.Visible = false;
         _notifyIcon.Dispose();
         _api.Dispose();

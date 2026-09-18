@@ -82,7 +82,13 @@ internal sealed class SettingsForm : Form
         root.Controls.Add(connectionPanel, 1, 3);
 
         var tabs = new TabControl { Dock = DockStyle.Fill };
-        _statusesList = new ListBox { Dock = DockStyle.Fill };
+        _statusesList = new ListBox
+        {
+            Dock = DockStyle.Fill,
+            DrawMode = DrawMode.OwnerDrawFixed,
+            ItemHeight = Math.Max(18, Font.Height + 6)
+        };
+        _statusesList.DrawItem += DrawStatusItem;
         _devicesList = new ListBox { Dock = DockStyle.Fill };
         tabs.TabPages.Add(BuildStatusesTab());
         tabs.TabPages.Add(BuildDevicesTab());
@@ -398,6 +404,73 @@ internal sealed class SettingsForm : Form
         catch (Exception ex)
         {
             ShowError(ex.Message);
+        }
+    }
+
+    // Statuses are shown with a square filled with the color assigned to them, so the list shows
+    // the mapping without opening the color dialog. Items stay StatusDto: the buttons above rely on
+    // SelectedItem being the status itself.
+    private static void DrawStatusItem(object? sender, DrawItemEventArgs e)
+    {
+        if (sender is not ListBox list || e.Index < 0 || e.Index >= list.Items.Count)
+        {
+            return;
+        }
+
+        if (list.Items[e.Index] is not StatusDto status)
+        {
+            return;
+        }
+
+        var selected = (e.State & DrawItemState.Selected) == DrawItemState.Selected;
+        using (var background = new SolidBrush(selected ? SystemColors.Highlight : list.BackColor))
+        {
+            e.Graphics.FillRectangle(background, e.Bounds);
+        }
+
+        var color = ParseStatusColor(status.Color);
+        var size = Math.Max(8, Math.Min(12, e.Bounds.Height - 6));
+        var marker = new Rectangle(
+            e.Bounds.Left + 4,
+            e.Bounds.Top + ((e.Bounds.Height - size) / 2),
+            size,
+            size);
+
+        using (var fill = new SolidBrush(color))
+        using (var border = new Pen(ControlPaint.Dark(color)))
+        {
+            e.Graphics.FillRectangle(fill, marker);
+            e.Graphics.DrawRectangle(border, marker);
+        }
+
+        var text = new Rectangle(
+            marker.Right + 6,
+            e.Bounds.Top,
+            Math.Max(0, e.Bounds.Right - marker.Right - 8),
+            e.Bounds.Height);
+
+        TextRenderer.DrawText(
+            e.Graphics,
+            status.Name,
+            list.Font,
+            text,
+            selected ? SystemColors.HighlightText : list.ForeColor,
+            TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+
+        e.DrawFocusRectangle();
+    }
+
+    private static Color ParseStatusColor(string value)
+    {
+        try
+        {
+            var color = ColorTranslator.FromHtml(value);
+            return color.IsEmpty ? Color.SlateGray : color;
+        }
+        catch
+        {
+            // Server validates colors; malformed legacy data should not break the list.
+            return Color.SlateGray;
         }
     }
 

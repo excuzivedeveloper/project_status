@@ -9,6 +9,7 @@ internal sealed class AppSettings
     public string LocalDeviceName { get; set; } = string.Empty;
     public bool AlwaysOnTop { get; set; }
     public bool StartWithWindows { get; set; } = true;
+    public string LastUpdatePromptVersion { get; set; } = string.Empty;
     public int? WindowX { get; set; }
     public int? WindowY { get; set; }
     public int WindowWidth { get; set; } = 760;

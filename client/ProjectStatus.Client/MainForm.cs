@@ -11,6 +11,7 @@ internal sealed class MainForm : Form
     private const string DeviceColumn = "device";
     private const string NoteColumn = "note";
     private const string UpdatedColumn = "updated";
+    private static readonly Color PinActiveBackColor = Color.FromArgb(0, 120, 215);
 
     private readonly AppSettings _settings;
     private readonly ApiClient _api;
@@ -54,6 +55,10 @@ internal sealed class MainForm : Form
             Padding = new Padding(4, 2, 4, 2)
         };
 
+        // The stock checked-state rendering is too subtle to show that Pin is on, so a checked
+        // toolbar button is filled with an accent color instead.
+        toolStrip.Renderer = new PinCheckedRenderer();
+
         var addButton = new ToolStripButton("+ Project");
         addButton.Click += async (_, _) => await AddProjectAsync();
 
@@ -61,7 +66,7 @@ internal sealed class MainForm : Form
         deleteButton.Click += async (_, _) => await DeleteSelectedProjectAsync();
 
         var settingsButton = new ToolStripButton("Settings");
-        settingsButton.Click += (_, _) => ShowSettingsDialog();
+        settingsButton.Click += async (_, _) => await ShowSettingsDialogAsync();
 
         _pinButton = new ToolStripButton("Pin")
         {
@@ -83,6 +88,15 @@ internal sealed class MainForm : Form
         toolStrip.Items.Add(settingsButton);
         toolStrip.Items.Add(_pinButton);
 
+        // Toolbar actions run against the row the user was working in, so a pending text edit is
+        // committed on mouse down and the caret is parked on that same row.
+        foreach (var button in new[] { addButton, deleteButton, settingsButton })
+        {
+            button.MouseDown += (_, _) => CommitPendingGridEdit();
+        }
+
+        UpdatePinVisual(settings.AlwaysOnTop);
+
         _grid = BuildGrid();
         _grid.Dock = DockStyle.Fill;
 
@@ -102,6 +116,7 @@ internal sealed class MainForm : Form
         _pollTimer.Tick += async (_, _) => await RefreshStateAsync(force: false);
 
         FormClosing += OnFormClosing;
+        Deactivate += (_, _) => CommitPendingGridEdit();
         ResizeEnd += (_, _) => CaptureWindowSettings();
         Move += (_, _) =>
         {
@@ -158,6 +173,7 @@ internal sealed class MainForm : Form
             _syncingPin = false;
         }
 
+        UpdatePinVisual(value);
         AlwaysOnTopChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -184,8 +200,10 @@ internal sealed class MainForm : Form
         Close();
     }
 
-    public void ShowSettingsDialog()
+    public async Task ShowSettingsDialogAsync()
     {
+        CommitPendingGridEdit();
+
         using var dialog = new SettingsForm(_settings, _state);
         if (dialog.ShowDialog(this) != DialogResult.OK)
         {
@@ -200,7 +218,11 @@ internal sealed class MainForm : Form
             _deviceLabel.Text = $"This PC: {_settings.LocalDeviceName}";
             SetAlwaysOnTop(_settings.AlwaysOnTop);
             _stateSignature = string.Empty;
-            _ = RefreshStateAsync(force: true);
+
+            // Settings edits statuses and devices on the server. The main form has to show them when
+            // the dialog is gone, so wait for the refreshed snapshot instead of starting it and hoping
+            // the poll timer picks it up before the user looks at the grid again.
+            await RefreshStateAsync(force: true);
         }
         catch (Exception ex)
         {
@@ -208,9 +230,39 @@ internal sealed class MainForm : Form
         }
     }
 
+    // Commits an in-progress grid edit and takes the caret off the edited cell.
+    // DataGridView.EndEdit() is not enough while EditMode is EditOnEnter: it commits the value but
+    // starts a new edit session on the same cell, so the caret stays and the cell keeps looking
+    // editable. Assigning the current cell is what actually ends the session; the read-only Updated
+    // cell is the target because a read-only cell cannot start another session, while its row stays
+    // current so row-oriented actions (Delete) still see the project the user was working with.
+    internal void CommitPendingGridEdit()
+    {
+        if (_grid.IsDisposed || !_grid.IsCurrentCellInEditMode)
+        {
+            return;
+        }
+
+        var row = _grid.CurrentCell?.OwningRow;
+        if (row is null)
+        {
+            _grid.EndEdit();
+            return;
+        }
+
+        _grid.CurrentCell = row.Cells[UpdatedColumn];
+    }
+
+    private bool IsTextColumn(int columnIndex)
+    {
+        return columnIndex >= 0 &&
+               columnIndex < _grid.Columns.Count &&
+               _grid.Columns[columnIndex].Name is NameColumn or NoteColumn;
+    }
+
     private DataGridView BuildGrid()
     {
-        var grid = new DataGridView
+        var grid = new ProjectGrid(this)
         {
             AllowUserToAddRows = false,
             AllowUserToDeleteRows = false,
@@ -340,13 +392,34 @@ internal sealed class MainForm : Form
         };
 
         grid.DataError += (_, e) => e.ThrowException = false;
+
+        // Leaving the grid (toolbar, taskbar, another window) commits the pending edit as well.
+        grid.Leave += (_, _) => CommitPendingGridEdit();
+
+        // A click on the empty area below the rows ends the edit like Enter does.
+        grid.MouseDown += (_, e) =>
+        {
+            if (grid.HitTest(e.X, e.Y).Type == DataGridViewHitTestType.None)
+            {
+                CommitPendingGridEdit();
+            }
+        };
+
         return grid;
     }
 
     private async Task RefreshStateAsync(bool force)
     {
-        if (!force && _grid.IsCurrentCellInEditMode)
+        if (force)
         {
+            // A forced refresh is triggered by the app itself (startup, toolbar action, after
+            // Settings), so it finishes the pending edit first: an active editing control would
+            // otherwise cause the freshly fetched snapshot to be dropped.
+            CommitPendingGridEdit();
+        }
+        else if (_grid.IsCurrentCellInEditMode)
+        {
+            // A background poll must never rebind the grid while the user is really editing.
             return;
         }
 
@@ -362,12 +435,17 @@ internal sealed class MainForm : Form
             state = await EnsureLocalDeviceExistsAsync(state);
             SetSyncOk();
 
-            // The user may have started editing while the HTTP request was in flight.
-            // Do not apply any fetched snapshot while an edit is active; the next poll
-            // (or a later forced refresh) can safely apply it after editing ends.
-            if (_grid.IsCurrentCellInEditMode)
+            // The user may have started editing while the HTTP request was in flight. A poll gives up
+            // and lets the next tick apply the snapshot; a forced refresh ends that edit instead,
+            // because its caller is waiting for the grid to show the current server state.
+            if (!force && _grid.IsCurrentCellInEditMode)
             {
                 return;
+            }
+
+            if (force)
+            {
+                CommitPendingGridEdit();
             }
 
             var signature = ComputeStateSignature(state);
@@ -459,6 +537,11 @@ internal sealed class MainForm : Form
                     }
                 }
             }
+
+            // Rebuilding the rows makes the grid pick a current cell again and, in EditOnEnter mode,
+            // start editing it. Park the caret: a session left behind here would keep the background
+            // polling from ever applying the next snapshot. Saves are suppressed while binding.
+            CommitPendingGridEdit();
         }
         finally
         {
@@ -559,6 +642,17 @@ internal sealed class MainForm : Form
 
         var statusId = ParseNullableId(row.Cells[StatusColumn].Value);
         var deviceId = ParseNullableId(row.Cells[DeviceColumn].Value);
+
+        // Ending an edit session also happens when nothing was typed (leaving the cell, toolbar
+        // clicks, refreshes), and CellEndEdit fires for those too. Skip the request when the row
+        // still holds the values the server gave us: writing them back would only move Updated.
+        if (name == current.Name &&
+            note == current.Note &&
+            statusId == current.StatusId &&
+            deviceId == current.DeviceId)
+        {
+            return;
+        }
 
         await _apiGate.WaitAsync();
         try
@@ -684,6 +778,17 @@ internal sealed class MainForm : Form
         return luminance > 150 ? Color.Black : Color.White;
     }
 
+    // Pin is toggled from the toolbar, the tray and Settings, and every one of them goes through
+    // SetAlwaysOnTop, so the button derives its look from the resulting window state in one place.
+    private void UpdatePinVisual(bool active)
+    {
+        _pinButton.BackColor = active ? PinActiveBackColor : Color.Empty;
+        _pinButton.ForeColor = active ? Color.White : Color.Empty;
+        _pinButton.ToolTipText = active
+            ? "Always on top is on"
+            : "Keep the window above other windows";
+    }
+
     private void RestoreWindowBounds()
     {
         var width = Math.Max(MinimumSize.Width, _settings.WindowWidth);
@@ -730,4 +835,41 @@ internal sealed class MainForm : Form
     }
 
     private sealed record ChoiceItem(string Id, string Name);
+
+    private sealed class PinCheckedRenderer : ToolStripProfessionalRenderer
+    {
+        protected override void OnRenderButtonBackground(ToolStripItemRenderEventArgs e)
+        {
+            if (e.Item is ToolStripButton { Checked: true } button && button.BackColor != Color.Empty)
+            {
+                using var brush = new SolidBrush(button.BackColor);
+                e.Graphics.FillRectangle(brush, new Rectangle(Point.Empty, e.Item.Size));
+                return;
+            }
+
+            base.OnRenderButtonBackground(e);
+        }
+    }
+
+    // Enter is handled here because ProcessDialogKey is the point where the grid sees the key while
+    // an editing control owns the keyboard focus: the editing TextBox raises no KeyDown for it, so a
+    // handler attached to that control never runs. Only a plain Enter on a text cell is taken over;
+    // every other key keeps the stock DataGridView behaviour.
+    private sealed class ProjectGrid(MainForm owner) : DataGridView
+    {
+        protected override bool ProcessDialogKey(Keys keyData)
+        {
+            if ((keyData & Keys.KeyCode) == Keys.Enter &&
+                (keyData & Keys.Modifiers) == Keys.None &&
+                IsCurrentCellInEditMode &&
+                CurrentCell is not null &&
+                owner.IsTextColumn(CurrentCell.ColumnIndex))
+            {
+                owner.CommitPendingGridEdit();
+                return true;
+            }
+
+            return base.ProcessDialogKey(keyData);
+        }
+    }
 }
