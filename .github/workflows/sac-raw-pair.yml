@@ -1,0 +1,52 @@
+name: SAC raw binary pair
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/sac-raw-pair.yml"
+
+jobs:
+  build-pair:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout D
+        uses: actions/checkout@v4
+        with:
+          ref: 1916ae99405c6753809852ee3956bfb7029444cc
+          path: d
+
+      - name: Checkout G
+        uses: actions/checkout@v4
+        with:
+          ref: 54fba8da2b197d583de39e1ef05c70bac22f501b
+          path: g
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Publish D
+        shell: pwsh
+        run: |
+          dotnet publish .\d\client\ProjectStatus.Client\ProjectStatus.Client.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o "$env:RUNNER_TEMP\sac-pair\D"
+          if (-not (Test-Path "$env:RUNNER_TEMP\sac-pair\D\ProjectStatus.exe")) { throw "D exe missing" }
+
+      - name: Publish G
+        shell: pwsh
+        run: |
+          dotnet publish .\g\client\ProjectStatus.Client\ProjectStatus.Client.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o "$env:RUNNER_TEMP\sac-pair\G"
+          if (-not (Test-Path "$env:RUNNER_TEMP\sac-pair\G\ProjectStatus.exe")) { throw "G exe missing" }
+
+      - name: Hash pair
+        shell: pwsh
+        run: |
+          Get-FileHash "$env:RUNNER_TEMP\sac-pair\D\ProjectStatus.exe" -Algorithm SHA256
+          Get-FileHash "$env:RUNNER_TEMP\sac-pair\G\ProjectStatus.exe" -Algorithm SHA256
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ProjectStatus-SAC-raw-D-vs-G
+          path: |
+            ${{ runner.temp }}\sac-pair\D\ProjectStatus.exe
+            ${{ runner.temp }}\sac-pair\G\ProjectStatus.exe
+          if-no-files-found: error
