@@ -33,10 +33,18 @@ internal static class WindowBounds
         var clampedWidth = Math.Min(targetWidth, primaryWorkingArea.Width);
         var clampedHeight = Math.Min(targetHeight, primaryWorkingArea.Height);
 
-        return new Rectangle(
-            primaryWorkingArea.Right - clampedWidth - DefaultMargin,
-            primaryWorkingArea.Top + DefaultMargin,
-            clampedWidth,
-            clampedHeight);
+        // Default corner is the top right; a window that had to be clamped still has to fit inside the
+        // working area, so the offset is bounded by it.
+        var cornerRight = Math.Max(
+            primaryWorkingArea.Left,
+            primaryWorkingArea.Right - clampedWidth - DefaultMargin);
+        var cornerTop = Math.Max(
+            primaryWorkingArea.Top,
+            primaryWorkingArea.Top + DefaultMargin);
+
+        var targetX = Math.Min(cornerRight, primaryWorkingArea.Right - clampedWidth);
+        var targetY = Math.Min(cornerTop, primaryWorkingArea.Bottom - clampedHeight);
+
+        return new Rectangle(targetX, targetY, clampedWidth, clampedHeight);
     }
 }

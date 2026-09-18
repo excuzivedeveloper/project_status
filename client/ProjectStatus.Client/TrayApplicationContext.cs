@@ -141,11 +141,71 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _settings.LastUpdatePromptVersion = update.Version;
         AppSettingsStore.Save(_settings);
 
-        var prompt = new UpdatePromptForm(update.Version);
-        prompt.UpdateRequested += (_, _) => OpenUpdateDownload();
+        var prompt = new UpdatePromptForm(update.Version, () => ApplyUpdateAsync(update));
+        prompt.UpdateLaunched += (_, _) => ExitApplication();
         prompt.FormClosed += (_, _) => _updatePrompt = null;
         _updatePrompt = prompt;
         prompt.Show();
+    }
+
+    // The installer is downloaded to a temporary directory, checked against the checksum published
+    // with the release, and only then started. Nothing is launched on a mismatch, and every failure
+    // leaves the running application alone so the update can be tried again later.
+    private async Task<string?> ApplyUpdateAsync(UpdateInfo update)
+    {
+        if (update.InstallerUri is null || update.ChecksumUri is null)
+        {
+            return "This release has no installer to update from. Use the tray item to open the release page.";
+        }
+
+        string installerPath;
+        string checksumText;
+        try
+        {
+            installerPath = await UpdateDownloader.DownloadAsync(update.InstallerUri);
+            checksumText = await UpdateDownloader.DownloadTextAsync(update.ChecksumUri);
+        }
+        catch (Exception ex)
+        {
+            return $"The update could not be downloaded: {ex.Message}";
+        }
+
+        var expectedHash = UpdateChecksum.ParseHash(checksumText, update.InstallerFileName);
+        if (expectedHash is null)
+        {
+            return "Update verification failed.";
+        }
+
+        string actualHash;
+        try
+        {
+            actualHash = await UpdateDownloader.ComputeFileHashAsync(installerPath);
+        }
+        catch (Exception ex)
+        {
+            return $"Update verification failed: {ex.Message}";
+        }
+
+        if (!UpdateChecksum.Matches(expectedHash, actualHash))
+        {
+            return "Update verification failed.";
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = installerPath,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            return $"The installer could not be started: {ex.Message}";
+        }
+
+        // The installer was started, so the running application gets out of its way.
+        return null;
     }
 
     private void OpenUpdateDownload()

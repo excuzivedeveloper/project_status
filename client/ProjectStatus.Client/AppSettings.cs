@@ -85,8 +85,7 @@ internal static class AppSettingsStore
                 return new AppSettings();
             }
 
-            var json = File.ReadAllText(SettingsPath);
-            return JsonSerializer.Deserialize<AppSettings>(json, JsonOptions) ?? new AppSettings();
+            return FromJson(File.ReadAllText(SettingsPath));
         }
         catch
         {
@@ -97,8 +96,19 @@ internal static class AppSettingsStore
     public static void Save(AppSettings settings)
     {
         Directory.CreateDirectory(SettingsDirectory);
-        var json = JsonSerializer.Serialize(settings, JsonOptions);
-        File.WriteAllText(SettingsPath, json);
+        File.WriteAllText(SettingsPath, ToJson(settings));
+    }
+
+    // Serialisation is exposed so the settings contract can be checked without touching the real
+    // settings file: a file written by an older version has to load with the new defaults.
+    internal static AppSettings FromJson(string json)
+    {
+        return JsonSerializer.Deserialize<AppSettings>(json, JsonOptions) ?? new AppSettings();
+    }
+
+    internal static string ToJson(AppSettings settings)
+    {
+        return JsonSerializer.Serialize(settings, JsonOptions);
     }
 }
 
