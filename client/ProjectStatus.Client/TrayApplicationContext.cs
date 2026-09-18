@@ -81,6 +81,9 @@ internal sealed class TrayApplicationContext : ApplicationContext
                 Application.Idle -= idleHandler;
             }
 
+            // Diagnostic: eager-create the hidden form handle only.
+            _ = _mainForm.Handle;
+
             _mainForm.StartPolling();
             _ = CheckForUpdatesAsync();
             if (!startHidden)
