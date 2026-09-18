@@ -10,13 +10,16 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly NotifyIcon _notifyIcon;
     private readonly ToolStripMenuItem _alwaysOnTopItem;
     private readonly ToolStripMenuItem _updateItem;
+    private readonly SingleInstance _singleInstance;
+    private int _activationRequested;
     private Uri? _updateUri;
     private UpdatePromptForm? _updatePrompt;
     private bool _exiting;
 
-    public TrayApplicationContext(AppSettings settings, bool startHidden)
+    public TrayApplicationContext(AppSettings settings, bool startHidden, SingleInstance singleInstance)
     {
         _settings = settings;
+        _singleInstance = singleInstance;
         _api = new ApiClient(settings.ServerAddress);
         _mainForm = new MainForm(settings, _api);
         MainForm = _mainForm;
@@ -66,6 +69,10 @@ internal sealed class TrayApplicationContext : ApplicationContext
             _alwaysOnTopItem.Checked = _mainForm.TopMost;
         };
 
+        // The pipe listener reports on a background thread, so the request is only recorded there
+        // and applied here once the message queue goes idle.
+        Application.Idle += (_, _) => ApplyPendingActivation();
+
         EventHandler? idleHandler = null;
         idleHandler = (_, _) =>
         {
@@ -74,14 +81,61 @@ internal sealed class TrayApplicationContext : ApplicationContext
                 Application.Idle -= idleHandler;
             }
 
+            // The window can stay hidden for the whole session, so create its handle now: a later
+            // activation request needs a window to post to.
+            _ = _mainForm.Handle;
+
             _mainForm.StartPolling();
             _ = CheckForUpdatesAsync();
             if (!startHidden)
             {
                 _mainForm.ShowFromTray();
             }
+
+            _singleInstance.StartListening(OnActivationRequested);
+
+            // Safety net for a request that arrived before the handle existed.
+            ApplyPendingActivation();
         };
         Application.Idle += idleHandler;
+    }
+
+    // Called on the pipe listener thread. The activation is posted straight to the UI thread so an
+    // ordinary second launch brings the window forward immediately, even while it is hidden and the
+    // UI thread is otherwise idle.
+    private void OnActivationRequested()
+    {
+        if (_exiting || _mainForm.IsDisposed)
+        {
+            return;
+        }
+
+        if (!_mainForm.IsHandleCreated)
+        {
+            // Nothing to post to yet; the first idle pass creates the handle and applies this.
+            Interlocked.Exchange(ref _activationRequested, 1);
+            return;
+        }
+
+        try
+        {
+            _mainForm.BeginInvoke(new Action(_mainForm.ShowFromTray));
+        }
+        catch (InvalidOperationException)
+        {
+            // The window went away between the check and the post.
+            Interlocked.Exchange(ref _activationRequested, 1);
+        }
+    }
+
+    private void ApplyPendingActivation()
+    {
+        if (_exiting || Interlocked.Exchange(ref _activationRequested, 0) == 0)
+        {
+            return;
+        }
+
+        _mainForm.ShowFromTray();
     }
 
     private async Task CheckForUpdatesAsync()
@@ -117,11 +171,71 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _settings.LastUpdatePromptVersion = update.Version;
         AppSettingsStore.Save(_settings);
 
-        var prompt = new UpdatePromptForm(update.Version);
-        prompt.UpdateRequested += (_, _) => OpenUpdateDownload();
+        var prompt = new UpdatePromptForm(update.Version, () => ApplyUpdateAsync(update));
+        prompt.UpdateLaunched += (_, _) => ExitApplication();
         prompt.FormClosed += (_, _) => _updatePrompt = null;
         _updatePrompt = prompt;
         prompt.Show();
+    }
+
+    // The installer is downloaded to a temporary directory, checked against the checksum published
+    // with the release, and only then started. Nothing is launched on a mismatch, and every failure
+    // leaves the running application alone so the update can be tried again later.
+    private async Task<string?> ApplyUpdateAsync(UpdateInfo update)
+    {
+        if (update.InstallerUri is null || update.ChecksumUri is null)
+        {
+            return "This release has no installer to update from. Use the tray item to open the release page.";
+        }
+
+        string installerPath;
+        string checksumText;
+        try
+        {
+            installerPath = await UpdateDownloader.DownloadAsync(update.InstallerUri);
+            checksumText = await UpdateDownloader.DownloadTextAsync(update.ChecksumUri);
+        }
+        catch (Exception ex)
+        {
+            return $"The update could not be downloaded: {ex.Message}";
+        }
+
+        var expectedHash = UpdateChecksum.ParseHash(checksumText, update.InstallerFileName);
+        if (expectedHash is null)
+        {
+            return "Update verification failed.";
+        }
+
+        string actualHash;
+        try
+        {
+            actualHash = await UpdateDownloader.ComputeFileHashAsync(installerPath);
+        }
+        catch (Exception ex)
+        {
+            return $"Update verification failed: {ex.Message}";
+        }
+
+        if (!UpdateChecksum.Matches(expectedHash, actualHash))
+        {
+            return "Update verification failed.";
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = installerPath,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            return $"The installer could not be started: {ex.Message}";
+        }
+
+        // The installer was started, so the running application gets out of its way.
+        return null;
     }
 
     private void OpenUpdateDownload()

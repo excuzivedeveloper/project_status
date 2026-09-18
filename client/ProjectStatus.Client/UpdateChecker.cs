@@ -2,7 +2,21 @@ using System.Text.Json;
 
 namespace ProjectStatus.Client;
 
-internal sealed record UpdateInfo(string Version, Uri DownloadUri);
+// A newer release, with the assets the in-place updater needs. InstallerUri and ChecksumUri are only
+// set when the release actually published the installer and its checksum, so the caller can fall
+// back to the release page instead of offering an update it cannot verify.
+internal sealed record UpdateInfo(
+    string Version,
+    Uri? ReleaseUri,
+    Uri? InstallerUri,
+    Uri? ChecksumUri)
+{
+    public bool CanUpdateInPlace => InstallerUri is not null && ChecksumUri is not null;
+
+    public Uri? DownloadUri => InstallerUri ?? ReleaseUri;
+
+    public string InstallerFileName => $"ProjectStatus-Setup-v{Version}.exe";
+}
 
 internal static class UpdateChecker
 {
@@ -38,10 +52,19 @@ internal static class UpdateChecker
                 return null;
             }
 
-            var downloadUri = FindInstallerDownload(root) ?? FindReleasePage(root);
-            return downloadUri is null
-                ? null
-                : new UpdateInfo(latestVersion.ToString(3), downloadUri);
+            var version = latestVersion.ToString(3);
+            var installerName = $"ProjectStatus-Setup-v{version}.exe";
+
+            var releaseUri = FindReleasePage(root);
+            var installerUri = FindAsset(root, installerName);
+            var checksumUri = FindAsset(root, installerName + ".sha256");
+
+            if (releaseUri is null && installerUri is null)
+            {
+                return null;
+            }
+
+            return new UpdateInfo(version, releaseUri, installerUri, checksumUri);
         }
         catch (HttpRequestException)
         {
@@ -103,7 +126,9 @@ internal static class UpdateChecker
             Math.Max(version.Build, 0));
     }
 
-    private static Uri? FindInstallerDownload(JsonElement root)
+    // Assets are matched by their exact release name: a release must publish the installer for this
+    // specific version, not just any file that looks like an installer.
+    private static Uri? FindAsset(JsonElement root, string assetName)
     {
         if (!root.TryGetProperty("assets", out var assets) || assets.ValueKind != JsonValueKind.Array)
         {
@@ -115,9 +140,7 @@ internal static class UpdateChecker
             var name = asset.TryGetProperty("name", out var nameElement)
                 ? nameElement.GetString()
                 : null;
-            if (string.IsNullOrWhiteSpace(name) ||
-                !name.StartsWith("ProjectStatus-Setup-", StringComparison.OrdinalIgnoreCase) ||
-                !name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(name, assetName, StringComparison.OrdinalIgnoreCase))
             {
                 continue;
             }

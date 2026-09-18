@@ -8,8 +8,13 @@
     <Nullable>enable</Nullable>
     <AssemblyName>ProjectStatus</AssemblyName>
     <RootNamespace>ProjectStatus.Client</RootNamespace>
-    <Version>0.1.3</Version>
+    <Version>0.1.4</Version>
     <ApplicationIcon>Assets\project_status.ico</ApplicationIcon>
     <PublishSingleFile>true</PublishSingleFile>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The focused tests cover the pure logic in this assembly. -->
+    <InternalsVisibleTo Include="ProjectStatus.Client.Tests" />
+  </ItemGroup>
 </Project>

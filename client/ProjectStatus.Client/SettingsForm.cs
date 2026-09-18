@@ -7,8 +7,15 @@ internal sealed class SettingsForm : Form
     private readonly ComboBox _localDeviceCombo;
     private readonly CheckBox _alwaysOnTopCheck;
     private readonly CheckBox _autostartCheck;
+    private readonly ListBox _projectsList;
     private readonly ListBox _statusesList;
     private readonly ListBox _devicesList;
+
+    // Built by BuildAppearanceTab, which runs from the constructor.
+    private TrackBar _opacityTrack = null!;
+    private Label _opacityHint = null!;
+    private Panel _backgroundPreview = null!;
+    private Color _pendingBackground;
     private readonly Label _connectionLabel;
 
     public SettingsForm(AppSettings settings, StateSnapshot state)
@@ -82,6 +89,7 @@ internal sealed class SettingsForm : Form
         root.Controls.Add(connectionPanel, 1, 3);
 
         var tabs = new TabControl { Dock = DockStyle.Fill };
+        _projectsList = new ListBox { Dock = DockStyle.Fill };
         _statusesList = new ListBox
         {
             Dock = DockStyle.Fill,
@@ -90,8 +98,10 @@ internal sealed class SettingsForm : Form
         };
         _statusesList.DrawItem += DrawStatusItem;
         _devicesList = new ListBox { Dock = DockStyle.Fill };
+        tabs.TabPages.Add(BuildProjectsTab());
         tabs.TabPages.Add(BuildStatusesTab());
         tabs.TabPages.Add(BuildDevicesTab());
+        tabs.TabPages.Add(BuildAppearanceTab());
         root.Controls.Add(tabs, 0, 4);
         root.SetColumnSpan(tabs, 2);
 
@@ -114,6 +124,122 @@ internal sealed class SettingsForm : Form
         CancelButton = cancelButton;
 
         Shown += async (_, _) => await ReloadSharedAsync(showError: false);
+    }
+
+    private TabPage BuildAppearanceTab()
+    {
+        var page = new TabPage("Appearance");
+        var layout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            RowCount = 5,
+            Padding = new Padding(10)
+        };
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        for (var row = 0; row < 4; row++)
+        {
+            layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        }
+
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
+        layout.Controls.Add(new Label { Text = "Compact opacity:", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 0);
+
+        _opacityTrack = new TrackBar
+        {
+            Dock = DockStyle.Fill,
+            Minimum = AppearanceSettings.MinimumOpacityPercent,
+            Maximum = AppearanceSettings.MaximumOpacityPercent,
+            TickFrequency = 5,
+            SmallChange = 5,
+            LargeChange = 10,
+            Value = AppearanceSettings.NormalizeOpacityPercent(_settings.CompactOpacity)
+        };
+        _opacityTrack.ValueChanged += (_, _) => UpdateOpacityHint();
+        layout.Controls.Add(_opacityTrack, 1, 0);
+
+        _opacityHint = new Label { AutoSize = true, Anchor = AnchorStyles.Left, ForeColor = SystemColors.GrayText };
+        layout.Controls.Add(_opacityHint, 1, 1);
+
+        layout.Controls.Add(new Label { Text = "Background:", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 2);
+
+        var backgroundPanel = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true };
+        _backgroundPreview = new Panel { Size = new Size(30, 22), BorderStyle = BorderStyle.FixedSingle };
+        var chooseButton = new Button { Text = "Choose color...", AutoSize = true };
+        chooseButton.Click += (_, _) => ChooseBackgroundColor();
+        var defaultButton = new Button { Text = "Use default", AutoSize = true };
+        defaultButton.Click += (_, _) => SetPendingBackground(Color.Empty);
+        backgroundPanel.Controls.Add(_backgroundPreview);
+        backgroundPanel.Controls.Add(chooseButton);
+        backgroundPanel.Controls.Add(defaultButton);
+        layout.Controls.Add(backgroundPanel, 1, 2);
+
+        var resetButton = new Button { Text = "Reset appearance", AutoSize = true };
+        resetButton.Click += (_, _) => ResetAppearance();
+        layout.Controls.Add(resetButton, 1, 3);
+
+        SetPendingBackground(AppearanceSettings.ParseBackgroundColor(_settings.BackgroundColor));
+        UpdateOpacityHint();
+
+        page.Controls.Add(layout);
+        return page;
+    }
+
+    private void UpdateOpacityHint()
+    {
+        _opacityHint.Text = $"Compact mode uses {_opacityTrack.Value}%. Full mode is always 100%.";
+    }
+
+    private void SetPendingBackground(Color color)
+    {
+        _pendingBackground = color;
+        _backgroundPreview.BackColor = color.IsEmpty ? SystemColors.Control : color;
+    }
+
+    private void ChooseBackgroundColor()
+    {
+        using var dialog = new ColorDialog
+        {
+            FullOpen = true,
+            Color = _pendingBackground.IsEmpty ? SystemColors.Control : _pendingBackground
+        };
+
+        if (dialog.ShowDialog(this) == DialogResult.OK)
+        {
+            SetPendingBackground(dialog.Color);
+        }
+    }
+
+    // Values are written when Save is pressed, like the rest of the settings.
+    private void ResetAppearance()
+    {
+        _opacityTrack.Value = AppearanceSettings.DefaultOpacityPercent;
+        SetPendingBackground(Color.Empty);
+    }
+
+    private TabPage BuildProjectsTab()
+    {
+        var page = new TabPage("Projects");
+        var layout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 2,
+            Padding = new Padding(6)
+        };
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        layout.Controls.Add(_projectsList, 0, 0);
+
+        var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true };
+        buttons.Controls.Add(ActionButton("Add", async () => await AddProjectAsync()));
+        buttons.Controls.Add(ActionButton("Rename", async () => await RenameProjectAsync()));
+        buttons.Controls.Add(ActionButton("Delete", async () => await DeleteProjectAsync()));
+        layout.Controls.Add(buttons, 0, 1);
+        page.Controls.Add(layout);
+        return page;
     }
 
     private TabPage BuildStatusesTab()
@@ -195,6 +321,13 @@ internal sealed class SettingsForm : Form
             var state = await api.GetStateAsync();
 
             var localText = _localDeviceCombo.Text;
+
+            _projectsList.Items.Clear();
+            foreach (var project in state.Projects)
+            {
+                _projectsList.Items.Add(project);
+            }
+
             _statusesList.Items.Clear();
             foreach (var status in state.Statuses)
             {
@@ -217,6 +350,93 @@ internal sealed class SettingsForm : Form
                 ShowError(ex.Message);
             }
         }
+    }
+
+    // Project lifecycle moved here from the main window: the grid no longer creates, renames or
+    // deletes projects. Every operation re-reads the shared state afterwards, so a rejected call
+    // never leaves the dialog showing something the server did not accept.
+    private async Task AddProjectAsync()
+    {
+        var name = PromptDialog.Show(this, "Add project", "Project name:");
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return;
+        }
+
+        await RunSharedMutationAsync(api => api.CreateProjectAsync(new ProjectPayload
+        {
+            Name = name.Trim(),
+            StatusId = FindPausedStatusId(),
+            DeviceId = null,
+            Note = string.Empty
+        }));
+    }
+
+    private async Task RenameProjectAsync()
+    {
+        if (_projectsList.SelectedItem is not ProjectDto selected)
+        {
+            return;
+        }
+
+        var name = PromptDialog.Show(this, "Rename project", "Project name:", selected.Name);
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return;
+        }
+
+        await RunSharedMutationAsync(async api =>
+        {
+            // The list in this dialog can be seconds old and another client may have changed the
+            // project since it was read. Only the name is taken from the dialog; status, device and
+            // note are taken from the freshly read state, so a rename cannot put stale values back.
+            var state = await api.GetStateAsync();
+            var current = state.Projects.FirstOrDefault(project => project.Id == selected.Id);
+            if (current is null)
+            {
+                throw new ApiException("This project no longer exists on the server.");
+            }
+
+            return await api.UpdateProjectAsync(current.Id, new ProjectPayload
+            {
+                Name = name.Trim(),
+                StatusId = current.StatusId,
+                DeviceId = current.DeviceId,
+                Note = current.Note
+            });
+        });
+    }
+
+    private async Task DeleteProjectAsync()
+    {
+        if (_projectsList.SelectedItem is not ProjectDto project)
+        {
+            return;
+        }
+
+        if (MessageBox.Show(this, $"Delete project '{project.Name}'?", "Project Status",
+                MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) != DialogResult.Yes)
+        {
+            return;
+        }
+
+        await RunSharedMutationAsync(async api =>
+        {
+            await api.DeleteProjectAsync(project.Id);
+            return project;
+        });
+    }
+
+    // A new project starts in the "Paused" stage when the server has one, which keeps the previous
+    // main-window behaviour after the button moved here.
+    private int? FindPausedStatusId()
+    {
+        return _statusesList.Items
+            .OfType<StatusDto>()
+            .FirstOrDefault(status =>
+                string.Equals(status.Name, "Paused", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(status.Name, "На паузе", StringComparison.OrdinalIgnoreCase))
+            ?.Id;
     }
 
     private async Task AddStatusAsync()
@@ -396,6 +616,10 @@ internal sealed class SettingsForm : Form
             _settings.LocalDeviceName = device;
             _settings.AlwaysOnTop = _alwaysOnTopCheck.Checked;
             _settings.StartWithWindows = _autostartCheck.Checked;
+            _settings.CompactOpacity = AppearanceSettings.NormalizeOpacityPercent(_opacityTrack.Value);
+            _settings.BackgroundColor = _pendingBackground.IsEmpty
+                ? AppearanceSettings.DefaultBackgroundColor
+                : AppearanceSettings.ToHex(_pendingBackground);
             AppSettingsStore.Save(_settings);
 
             DialogResult = DialogResult.OK;

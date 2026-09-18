@@ -9,7 +9,28 @@ internal sealed class AppSettings
     public string LocalDeviceName { get; set; } = string.Empty;
     public bool AlwaysOnTop { get; set; }
     public bool StartWithWindows { get; set; } = true;
+
+    // Whether the main window was open when the app last stopped. A settings file written before
+    // this property existed deserializes to false, which keeps the previous startup behaviour
+    // (start hidden) until the user opens or hides the window once.
+    public bool MainWindowVisible { get; set; }
+
+    // Compact keeps its own geometry, so switching modes leaves the other layout where it was.
+    public bool CompactMode { get; set; }
+    public int? CompactWindowX { get; set; }
+    public int? CompactWindowY { get; set; }
+    public int CompactWindowWidth { get; set; } = 240;
+    public int CompactWindowHeight { get; set; } = 300;
+
+    // Appearance. CompactOpacity only affects Compact mode; Full is always fully opaque. An empty
+    // background means the system surface colours.
+    public int CompactOpacity { get; set; } = AppearanceSettings.DefaultOpacityPercent;
+    public string BackgroundColor { get; set; } = AppearanceSettings.DefaultBackgroundColor;
+
     public string LastUpdatePromptVersion { get; set; } = string.Empty;
+
+    // Full mode geometry. These four keep their original names so an existing settings.json loads
+    // unchanged.
     public int? WindowX { get; set; }
     public int? WindowY { get; set; }
     public int WindowWidth { get; set; } = 760;
@@ -64,8 +85,7 @@ internal static class AppSettingsStore
                 return new AppSettings();
             }
 
-            var json = File.ReadAllText(SettingsPath);
-            return JsonSerializer.Deserialize<AppSettings>(json, JsonOptions) ?? new AppSettings();
+            return FromJson(File.ReadAllText(SettingsPath));
         }
         catch
         {
@@ -76,8 +96,19 @@ internal static class AppSettingsStore
     public static void Save(AppSettings settings)
     {
         Directory.CreateDirectory(SettingsDirectory);
-        var json = JsonSerializer.Serialize(settings, JsonOptions);
-        File.WriteAllText(SettingsPath, json);
+        File.WriteAllText(SettingsPath, ToJson(settings));
+    }
+
+    // Serialisation is exposed so the settings contract can be checked without touching the real
+    // settings file: a file written by an older version has to load with the new defaults.
+    internal static AppSettings FromJson(string json)
+    {
+        return JsonSerializer.Deserialize<AppSettings>(json, JsonOptions) ?? new AppSettings();
+    }
+
+    internal static string ToJson(AppSettings settings)
+    {
+        return JsonSerializer.Serialize(settings, JsonOptions);
     }
 }
 
