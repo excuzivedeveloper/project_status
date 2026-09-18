@@ -95,12 +95,14 @@ internal sealed class SingleInstance : IDisposable
         {
             try
             {
+                // CurrentUserOnly keeps the pipe reachable only by the account that owns this
+                // session, in addition to the user-specific name.
                 await using var server = new NamedPipeServerStream(
                     _pipeName,
                     PipeDirection.In,
                     maxNumberOfServerInstances: 1,
                     PipeTransmissionMode.Byte,
-                    PipeOptions.Asynchronous);
+                    PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
 
                 await server.WaitForConnectionAsync(token).ConfigureAwait(false);
 

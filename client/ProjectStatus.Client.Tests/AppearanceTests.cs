@@ -128,6 +128,63 @@ public class WindowBoundsTests
         Assert.Equal(Primary.Right - 260 - 24, noY.X);
     }
 
+    [Theory]
+    [InlineData(1900)]
+    [InlineData(1915)]
+    [InlineData(1919)]
+    public void A_window_that_only_peeks_onto_a_screen_is_pulled_fully_inside(int savedX)
+    {
+        var bounds = WindowBounds.Resolve(savedX, 100, 260, 300, Minimum, Primary, Screens);
+
+        Assert.Equal(260, bounds.Width);
+        Assert.Equal(300, bounds.Height);
+        Assert.True(Primary.Contains(bounds), $"{bounds} is not inside {Primary}");
+    }
+
+    [Fact]
+    public void A_few_intersecting_pixels_are_not_enough_to_keep_the_saved_position()
+    {
+        // Ten pixels of the window overlap the primary working area; keeping the saved rectangle
+        // would leave nearly all of it off-screen.
+        var bounds = WindowBounds.Resolve(-250, 100, 260, 300, Minimum, Primary, Screens);
+
+        Assert.True(Primary.Contains(bounds), $"{bounds} is not inside {Primary}");
+    }
+
+    [Fact]
+    public void A_saved_size_larger_than_the_screen_is_clamped_to_it()
+    {
+        var bounds = WindowBounds.Resolve(100, 100, 4000, 3000, Minimum, Primary, Screens);
+
+        Assert.Equal(Primary.Width, bounds.Width);
+        Assert.Equal(Primary.Height, bounds.Height);
+        Assert.True(Primary.Contains(bounds), $"{bounds} is not inside {Primary}");
+    }
+
+    [Fact]
+    public void A_window_saved_on_a_removed_monitor_falls_back_to_the_primary_corner()
+    {
+        var bounds = WindowBounds.Resolve(2200, 300, 260, 300, Minimum, Primary, Screens);
+
+        Assert.Equal(Primary.Right - 260 - 24, bounds.X);
+        Assert.Equal(Primary.Top + 24, bounds.Y);
+    }
+
+    [Fact]
+    public void A_left_hand_monitor_with_negative_coordinates_is_supported()
+    {
+        var leftHand = new Rectangle(-1920, 0, 1920, 1040);
+        var screens = new List<Rectangle> { Primary, leftHand };
+
+        var onScreen = WindowBounds.Resolve(-1700, 200, 260, 300, Minimum, Primary, screens);
+        Assert.Equal(new Rectangle(-1700, 200, 260, 300), onScreen);
+
+        var partlyOffScreen = WindowBounds.Resolve(-1900, -50, 260, 300, Minimum, Primary, screens);
+        Assert.Equal(-1900, partlyOffScreen.X);
+        Assert.Equal(leftHand.Top, partlyOffScreen.Y);
+        Assert.True(leftHand.Contains(partlyOffScreen), $"{partlyOffScreen} is not inside {leftHand}");
+    }
+
     [Fact]
     public void Bounds_on_a_secondary_screen_are_kept()
     {

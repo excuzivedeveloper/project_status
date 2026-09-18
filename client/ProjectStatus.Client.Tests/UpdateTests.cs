@@ -59,6 +59,20 @@ public class UpdateChecksumTests
     }
 
     [Fact]
+    public void ParseHash_requires_the_file_name_when_the_caller_knows_which_file_it_downloaded()
+    {
+        const string installer = "ProjectStatus-Setup-v0.1.4.exe";
+
+        // A bare hash, or one that names a different asset, is not accepted for a known download.
+        Assert.Null(UpdateChecksum.ParseHash(KnownHash, installer));
+        Assert.Null(UpdateChecksum.ParseHash($"{KnownHash}\n", installer));
+        Assert.Null(UpdateChecksum.ParseHash($"{KnownHash}  ProjectStatus-Setup-v0.1.3.exe", installer));
+
+        Assert.Equal(KnownHash, UpdateChecksum.ParseHash($"{KnownHash}  {installer}", installer));
+        Assert.Equal(KnownHash, UpdateChecksum.ParseHash($"{KnownHash} {installer}", installer));
+    }
+
+    [Fact]
     public void ParseHash_ignores_a_checksum_for_another_file()
     {
         var content = $"{KnownHash}  ProjectStatus-Setup-v0.1.3.exe";

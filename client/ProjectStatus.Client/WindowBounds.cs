@@ -18,33 +18,69 @@ internal static class WindowBounds
         var targetWidth = Math.Max(minimum.Width, width);
         var targetHeight = Math.Max(minimum.Height, height);
 
-        // Saved geometry is used only when the window would still land on a screen. After a monitor
-        // change the old coordinates can point at nothing, and a window nobody can reach is worse
-        // than a window in the default corner.
         if (savedX is int x && savedY is int y)
         {
             var saved = new Rectangle(x, y, targetWidth, targetHeight);
-            if (workingAreas.Any(area => area.IntersectsWith(saved)))
+            var area = FindWorkingArea(saved, workingAreas);
+
+            if (area is Rectangle target)
             {
-                return saved;
+                // The saved rectangle is only a wish: a window is always fitted into the working area
+                // it belongs to, so it never ends up partly or entirely outside the screen.
+                return FitInside(saved, target, minimum);
             }
         }
 
-        var clampedWidth = Math.Min(targetWidth, primaryWorkingArea.Width);
-        var clampedHeight = Math.Min(targetHeight, primaryWorkingArea.Height);
+        // No saved geometry, or the monitor it was saved on is gone: the default corner is used and
+        // still fitted into the primary working area.
+        var defaultBounds = new Rectangle(
+            primaryWorkingArea.Right - targetWidth - DefaultMargin,
+            primaryWorkingArea.Top + DefaultMargin,
+            targetWidth,
+            targetHeight);
 
-        // Default corner is the top right; a window that had to be clamped still has to fit inside the
-        // working area, so the offset is bounded by it.
-        var cornerRight = Math.Max(
-            primaryWorkingArea.Left,
-            primaryWorkingArea.Right - clampedWidth - DefaultMargin);
-        var cornerTop = Math.Max(
-            primaryWorkingArea.Top,
-            primaryWorkingArea.Top + DefaultMargin);
+        return FitInside(defaultBounds, primaryWorkingArea, minimum);
+    }
 
-        var targetX = Math.Min(cornerRight, primaryWorkingArea.Right - clampedWidth);
-        var targetY = Math.Min(cornerTop, primaryWorkingArea.Bottom - clampedHeight);
+    // The window's own corner decides which monitor it belongs to, so a window that merely peeks onto
+    // a screen is not adopted by it. When the corner is outside every screen, the monitor with the
+    // largest overlap is the best remaining candidate; no overlap at all means the saved location
+    // does not relate to any existing monitor.
+    private static Rectangle? FindWorkingArea(Rectangle saved, IReadOnlyList<Rectangle> workingAreas)
+    {
+        foreach (var area in workingAreas)
+        {
+            if (area.Contains(saved.Location))
+            {
+                return area;
+            }
+        }
 
-        return new Rectangle(targetX, targetY, clampedWidth, clampedHeight);
+        Rectangle? best = null;
+        var bestOverlap = 0;
+
+        foreach (var area in workingAreas)
+        {
+            var overlap = Rectangle.Intersect(area, saved);
+            var overlapArea = overlap.Width * overlap.Height;
+            if (overlapArea > bestOverlap)
+            {
+                bestOverlap = overlapArea;
+                best = area;
+            }
+        }
+
+        return best;
+    }
+
+    private static Rectangle FitInside(Rectangle desired, Rectangle area, Size minimum)
+    {
+        var width = Math.Min(Math.Max(minimum.Width, desired.Width), area.Width);
+        var height = Math.Min(Math.Max(minimum.Height, desired.Height), area.Height);
+
+        var x = Math.Min(Math.Max(desired.X, area.Left), area.Right - width);
+        var y = Math.Min(Math.Max(desired.Y, area.Top), area.Bottom - height);
+
+        return new Rectangle(x, y, width, height);
     }
 }

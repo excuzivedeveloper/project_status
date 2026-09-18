@@ -81,6 +81,10 @@ internal sealed class TrayApplicationContext : ApplicationContext
                 Application.Idle -= idleHandler;
             }
 
+            // The window can stay hidden for the whole session, so create its handle now: a later
+            // activation request needs a window to post to.
+            _ = _mainForm.Handle;
+
             _mainForm.StartPolling();
             _ = CheckForUpdatesAsync();
             if (!startHidden)
@@ -89,13 +93,39 @@ internal sealed class TrayApplicationContext : ApplicationContext
             }
 
             _singleInstance.StartListening(OnActivationRequested);
+
+            // Safety net for a request that arrived before the handle existed.
+            ApplyPendingActivation();
         };
         Application.Idle += idleHandler;
     }
 
+    // Called on the pipe listener thread. The activation is posted straight to the UI thread so an
+    // ordinary second launch brings the window forward immediately, even while it is hidden and the
+    // UI thread is otherwise idle.
     private void OnActivationRequested()
     {
-        Interlocked.Exchange(ref _activationRequested, 1);
+        if (_exiting || _mainForm.IsDisposed)
+        {
+            return;
+        }
+
+        if (!_mainForm.IsHandleCreated)
+        {
+            // Nothing to post to yet; the first idle pass creates the handle and applies this.
+            Interlocked.Exchange(ref _activationRequested, 1);
+            return;
+        }
+
+        try
+        {
+            _mainForm.BeginInvoke(new Action(_mainForm.ShowFromTray));
+        }
+        catch (InvalidOperationException)
+        {
+            // The window went away between the check and the post.
+            Interlocked.Exchange(ref _activationRequested, 1);
+        }
     }
 
     private void ApplyPendingActivation()

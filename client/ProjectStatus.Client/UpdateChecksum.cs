@@ -36,11 +36,12 @@ internal static class UpdateChecksum
                 continue;
             }
 
-            // The release format names the file the hash belongs to; when the caller knows which file
-            // it downloaded, a checksum for a different asset is not accepted.
+            // The release format names the file the hash belongs to. When the caller knows which file
+            // it downloaded, a hash on its own is not enough: the line has to name exactly that file,
+            // so a checksum published for another asset can never be accepted.
             if (expectedFileName is not null &&
-                parts.Length > 1 &&
-                !string.Equals(parts[1], expectedFileName, StringComparison.OrdinalIgnoreCase))
+                (parts.Length < 2 ||
+                 !string.Equals(parts[1], expectedFileName, StringComparison.OrdinalIgnoreCase)))
             {
                 continue;
             }
