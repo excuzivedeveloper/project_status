@@ -401,24 +401,37 @@ internal sealed class SettingsForm : Form
 
     private async Task RenameProjectAsync()
     {
-        if (_projectsList.SelectedItem is not ProjectDto project)
+        if (_projectsList.SelectedItem is not ProjectDto selected)
         {
             return;
         }
 
-        var name = PromptDialog.Show(this, Strings.PromptRenameProjectTitle, Strings.PromptProjectName, project.Name);
+        var name = PromptDialog.Show(this, Strings.PromptRenameProjectTitle, Strings.PromptProjectName, selected.Name);
         if (string.IsNullOrWhiteSpace(name))
         {
             return;
         }
 
-        await RunSharedMutationAsync(api => api.UpdateProjectAsync(project.Id, new ProjectPayload
+        await RunSharedMutationAsync(async api =>
         {
-            Name = name.Trim(),
-            StatusId = project.StatusId,
-            DeviceId = project.DeviceId,
-            Note = project.Note
-        }));
+            // The list in this dialog can be seconds old and another client may have changed the
+            // project since it was read. Only the name is taken from the dialog; status, device and
+            // note are taken from the freshly read state, so a rename cannot put stale values back.
+            var state = await api.GetStateAsync();
+            var current = state.Projects.FirstOrDefault(project => project.Id == selected.Id);
+            if (current is null)
+            {
+                throw new ApiException(Strings.ErrorProjectGone);
+            }
+
+            return await api.UpdateProjectAsync(current.Id, new ProjectPayload
+            {
+                Name = name.Trim(),
+                StatusId = current.StatusId,
+                DeviceId = current.DeviceId,
+                Note = current.Note
+            });
+        });
     }
 
     private async Task DeleteProjectAsync()
