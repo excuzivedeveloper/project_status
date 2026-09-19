@@ -844,7 +844,11 @@ internal sealed class MainForm : Form
         }
     }
 
-    private static string FormatUpdated(string value)
+    // The month name follows the interface language, not the OS culture, so Apply("ru") renders
+    // Russian month names and Apply("en") renders English ones. Exposed for tests (see
+    // InternalsVisibleTo in the project file); parsing stays invariant because the server sends
+    // round-trip ISO timestamps.
+    internal static string FormatUpdated(string value)
     {
         if (!DateTimeOffset.TryParse(
                 value,
@@ -855,7 +859,7 @@ internal sealed class MainForm : Form
             return value;
         }
 
-        return parsed.ToLocalTime().ToString("dd MMM HH:mm", CultureInfo.CurrentCulture);
+        return parsed.ToLocalTime().ToString("dd MMM HH:mm", Localization.Culture);
     }
 
     private static string ComputeStateSignature(StateSnapshot state)

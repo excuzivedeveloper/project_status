@@ -122,6 +122,31 @@ public class LocalizationTests
         Assert.Equal("NoSuchStringExists", Localization.Get("NoSuchStringExists"));
     }
 
+    [Fact]
+    public void Updated_uses_the_interface_language_for_the_month_name()
+    {
+        // Noon UTC keeps the calendar day stable across local time zones, so only the month name
+        // can differ between the two languages.
+        const string timestamp = "2026-09-19T12:00:00Z";
+
+        try
+        {
+            Localization.Apply("en");
+            var english = MainForm.FormatUpdated(timestamp);
+            Assert.Contains("Sep", english, StringComparison.OrdinalIgnoreCase);
+
+            Localization.Apply("ru");
+            var russian = MainForm.FormatUpdated(timestamp);
+            Assert.Contains("сент", russian, StringComparison.OrdinalIgnoreCase);
+
+            Assert.NotEqual(english, russian);
+        }
+        finally
+        {
+            Localization.Apply(null);
+        }
+    }
+
     private static IEnumerable<string> Keys(ResourceSet set)
     {
         foreach (DictionaryEntry entry in set)
