@@ -17,7 +17,7 @@ internal sealed class UpdatePromptForm : Form
     {
         _applyUpdate = applyUpdate;
 
-        Text = "Project Status update";
+        Text = Strings.UpdateTitle;
         StartPosition = FormStartPosition.CenterScreen;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -28,7 +28,7 @@ internal sealed class UpdatePromptForm : Form
 
         var title = new Label
         {
-            Text = "Project Status update",
+            Text = Strings.UpdateTitle,
             Font = new Font(Font, FontStyle.Bold),
             AutoSize = true,
             Location = new Point(16, 16)
@@ -36,7 +36,7 @@ internal sealed class UpdatePromptForm : Form
 
         _message = new Label
         {
-            Text = $"Version {version} is available.",
+            Text = Strings.UpdateAvailableFormat(version),
             AutoSize = true,
             Location = new Point(16, 48),
             MaximumSize = new Size(ClientSize.Width - 32, 0)
@@ -44,7 +44,7 @@ internal sealed class UpdatePromptForm : Form
 
         _updateButton = new Button
         {
-            Text = "Update now",
+            Text = Strings.ButtonUpdateNow,
             Size = new Size(104, 28),
             Location = new Point(ClientSize.Width - 16 - 104, ClientSize.Height - 16 - 28)
         };
@@ -52,7 +52,7 @@ internal sealed class UpdatePromptForm : Form
 
         _laterButton = new Button
         {
-            Text = "Later",
+            Text = Strings.ButtonLater,
             Size = new Size(88, 28),
             Location = new Point(ClientSize.Width - 16 - 104 - 8 - 88, ClientSize.Height - 16 - 28)
         };
@@ -74,7 +74,7 @@ internal sealed class UpdatePromptForm : Form
     {
         _updateButton.Enabled = false;
         _laterButton.Enabled = false;
-        _message.Text = "Downloading update...";
+        _message.Text = Strings.UpdateDownloading;
 
         string? error;
         try

@@ -1,0 +1,282 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AppTitle" xml:space="preserve">
+    <value>Project Status</value>
+  </data>
+  <data name="AppTitleSettings" xml:space="preserve">
+    <value>Project Status — Settings</value>
+  </data>
+  <data name="AppTitleFirstRun" xml:space="preserve">
+    <value>Project Status — First run</value>
+  </data>
+  <data name="ToolbarSettings" xml:space="preserve">
+    <value>Settings</value>
+  </data>
+  <data name="ToolbarPin" xml:space="preserve">
+    <value>Pin</value>
+  </data>
+  <data name="ToolbarPinTooltipOff" xml:space="preserve">
+    <value>Keep the window above other windows</value>
+  </data>
+  <data name="ToolbarPinTooltipOn" xml:space="preserve">
+    <value>Always on top is on</value>
+  </data>
+  <data name="ToolbarCompact" xml:space="preserve">
+    <value>Compact</value>
+  </data>
+  <data name="ToolbarCompactTooltip" xml:space="preserve">
+    <value>Show only the project and its status</value>
+  </data>
+  <data name="ToolbarFull" xml:space="preserve">
+    <value>Full</value>
+  </data>
+  <data name="ColumnProject" xml:space="preserve">
+    <value>Project</value>
+  </data>
+  <data name="ColumnStatus" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="ColumnDevice" xml:space="preserve">
+    <value>Device</value>
+  </data>
+  <data name="ColumnNote" xml:space="preserve">
+    <value>Note</value>
+  </data>
+  <data name="ColumnUpdated" xml:space="preserve">
+    <value>Updated</value>
+  </data>
+  <data name="SyncOk" xml:space="preserve">
+    <value>Sync: OK</value>
+  </data>
+  <data name="SyncNoConnection" xml:space="preserve">
+    <value>No connection</value>
+  </data>
+  <data name="DeviceLabelFormat" xml:space="preserve">
+    <value>This PC: {0}</value>
+  </data>
+  <data name="ErrorProjectNameBlank" xml:space="preserve">
+    <value>Project name cannot be blank.</value>
+  </data>
+  <data name="ErrorNoteInvalid" xml:space="preserve">
+    <value>Note must be one line and at most 200 characters.</value>
+  </data>
+  <data name="ErrorProjectGone" xml:space="preserve">
+    <value>This project no longer exists on the server.</value>
+  </data>
+  <data name="ErrorServerRequired" xml:space="preserve">
+    <value>Server address is required.</value>
+  </data>
+  <data name="ErrorServerInvalid" xml:space="preserve">
+    <value>Enter a valid HTTP or HTTPS server address.</value>
+  </data>
+  <data name="ErrorComputerNameRequired" xml:space="preserve">
+    <value>This computer name is required.</value>
+  </data>
+  <data name="ErrorComputerNameTooLong" xml:space="preserve">
+    <value>Computer name must be at most 100 characters.</value>
+  </data>
+  <data name="LabelServer" xml:space="preserve">
+    <value>Server:</value>
+  </data>
+  <data name="LabelThisComputer" xml:space="preserve">
+    <value>This computer:</value>
+  </data>
+  <data name="LabelLanguage" xml:space="preserve">
+    <value>Language:</value>
+  </data>
+  <data name="LanguageAuto" xml:space="preserve">
+    <value>Auto</value>
+  </data>
+  <data name="LanguageRussian" xml:space="preserve">
+    <value>Русский</value>
+  </data>
+  <data name="LanguageEnglish" xml:space="preserve">
+    <value>English</value>
+  </data>
+  <data name="OptionAlwaysOnTop" xml:space="preserve">
+    <value>Always on top</value>
+  </data>
+  <data name="OptionStartWithWindows" xml:space="preserve">
+    <value>Start with Windows</value>
+  </data>
+  <data name="ButtonTestConnection" xml:space="preserve">
+    <value>Test connection</value>
+  </data>
+  <data name="TestOk" xml:space="preserve">
+    <value>OK</value>
+  </data>
+  <data name="TestFailed" xml:space="preserve">
+    <value>Failed</value>
+  </data>
+  <data name="TabProjects" xml:space="preserve">
+    <value>Projects</value>
+  </data>
+  <data name="TabStatuses" xml:space="preserve">
+    <value>Statuses</value>
+  </data>
+  <data name="TabDevices" xml:space="preserve">
+    <value>Devices</value>
+  </data>
+  <data name="TabAppearance" xml:space="preserve">
+    <value>Appearance</value>
+  </data>
+  <data name="ButtonAdd" xml:space="preserve">
+    <value>Add</value>
+  </data>
+  <data name="ButtonRename" xml:space="preserve">
+    <value>Rename</value>
+  </data>
+  <data name="ButtonDelete" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+  <data name="ButtonColor" xml:space="preserve">
+    <value>Color</value>
+  </data>
+  <data name="ButtonSave" xml:space="preserve">
+    <value>Save</value>
+  </data>
+  <data name="ButtonCancel" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="ButtonOk" xml:space="preserve">
+    <value>OK</value>
+  </data>
+  <data name="ButtonContinue" xml:space="preserve">
+    <value>Continue</value>
+  </data>
+  <data name="LabelCompactOpacity" xml:space="preserve">
+    <value>Compact opacity:</value>
+  </data>
+  <data name="CompactOpacityHintFormat" xml:space="preserve">
+    <value>Compact mode uses {0}%. Full mode is always 100%.</value>
+  </data>
+  <data name="LabelBackground" xml:space="preserve">
+    <value>Background:</value>
+  </data>
+  <data name="ButtonChooseColor" xml:space="preserve">
+    <value>Choose color...</value>
+  </data>
+  <data name="ButtonUseDefault" xml:space="preserve">
+    <value>Use default</value>
+  </data>
+  <data name="ButtonResetAppearance" xml:space="preserve">
+    <value>Reset appearance</value>
+  </data>
+  <data name="PromptAddProjectTitle" xml:space="preserve">
+    <value>Add project</value>
+  </data>
+  <data name="PromptRenameProjectTitle" xml:space="preserve">
+    <value>Rename project</value>
+  </data>
+  <data name="PromptProjectName" xml:space="preserve">
+    <value>Project name:</value>
+  </data>
+  <data name="PromptAddStatusTitle" xml:space="preserve">
+    <value>Add status</value>
+  </data>
+  <data name="PromptRenameStatusTitle" xml:space="preserve">
+    <value>Rename status</value>
+  </data>
+  <data name="PromptStatusName" xml:space="preserve">
+    <value>Status name:</value>
+  </data>
+  <data name="PromptAddDeviceTitle" xml:space="preserve">
+    <value>Add device</value>
+  </data>
+  <data name="PromptRenameDeviceTitle" xml:space="preserve">
+    <value>Rename device</value>
+  </data>
+  <data name="PromptDeviceName" xml:space="preserve">
+    <value>Device name:</value>
+  </data>
+  <data name="ConfirmDeleteProjectFormat" xml:space="preserve">
+    <value>Delete project '{0}'?</value>
+  </data>
+  <data name="ConfirmDeleteStatusFormat" xml:space="preserve">
+    <value>Delete status '{0}'?</value>
+  </data>
+  <data name="ConfirmDeleteDeviceFormat" xml:space="preserve">
+    <value>Delete device '{0}'?</value>
+  </data>
+  <data name="FirstRunIntro" xml:space="preserve">
+    <value>Two small settings are needed before Project Status can start.</value>
+  </data>
+  <data name="FirstRunServerLabel" xml:space="preserve">
+    <value>1. Server:</value>
+  </data>
+  <data name="FirstRunComputerLabel" xml:space="preserve">
+    <value>2. This computer:</value>
+  </data>
+  <data name="TrayOpen" xml:space="preserve">
+    <value>Open</value>
+  </data>
+  <data name="TraySettings" xml:space="preserve">
+    <value>Settings</value>
+  </data>
+  <data name="TrayAlwaysOnTop" xml:space="preserve">
+    <value>Always on top</value>
+  </data>
+  <data name="TrayExit" xml:space="preserve">
+    <value>Exit</value>
+  </data>
+  <data name="TrayUpdateAvailableFormat" xml:space="preserve">
+    <value>Update available v{0}</value>
+  </data>
+  <data name="TrayTooltip" xml:space="preserve">
+    <value>Project Status</value>
+  </data>
+  <data name="TrayTooltipUpdate" xml:space="preserve">
+    <value>Project Status — update available</value>
+  </data>
+  <data name="UpdateTitle" xml:space="preserve">
+    <value>Project Status update</value>
+  </data>
+  <data name="UpdateAvailableFormat" xml:space="preserve">
+    <value>Version {0} is available.</value>
+  </data>
+  <data name="ButtonUpdateNow" xml:space="preserve">
+    <value>Update now</value>
+  </data>
+  <data name="ButtonLater" xml:space="preserve">
+    <value>Later</value>
+  </data>
+  <data name="UpdateDownloading" xml:space="preserve">
+    <value>Downloading update...</value>
+  </data>
+  <data name="UpdateNoInstaller" xml:space="preserve">
+    <value>This release has no installer to update from. Use the tray item to open the release page.</value>
+  </data>
+  <data name="UpdateDownloadFailedFormat" xml:space="preserve">
+    <value>The update could not be downloaded: {0}</value>
+  </data>
+  <data name="UpdateVerificationFailed" xml:space="preserve">
+    <value>Update verification failed.</value>
+  </data>
+  <data name="UpdateVerificationFailedFormat" xml:space="preserve">
+    <value>Update verification failed: {0}</value>
+  </data>
+  <data name="UpdateLaunchFailedFormat" xml:space="preserve">
+    <value>The installer could not be started: {0}</value>
+  </data>
+  <data name="DownloadTrustedHostRequired" xml:space="preserve">
+    <value>The update file must be downloaded from the trusted release host.</value>
+  </data>
+  <data name="DownloadMissingFileName" xml:space="preserve">
+    <value>The update download has no file name.</value>
+  </data>
+  <data name="ChecksumTrustedHostRequired" xml:space="preserve">
+    <value>The checksum must be downloaded from the trusted release host.</value>
+  </data>
+</root>

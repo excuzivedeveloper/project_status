@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Runtime.InteropServices;
 using System.Text;
 
 namespace ProjectStatus.Client;
@@ -11,6 +12,9 @@ internal sealed class MainForm : Form
     private const string DeviceColumn = "device";
     private const string NoteColumn = "note";
     private const string UpdatedColumn = "updated";
+    private const string PinButtonName = "PinButton";
+    private const int WmNcLButtonDown = 0x00A1;
+    private const int HtCaption = 0x0002;
     private static readonly Color PinActiveBackColor = Color.FromArgb(0, 120, 215);
     private static readonly Size FullMinimumSize = new(620, 260);
     private static readonly Size CompactMinimumSize = new(200, 120);
@@ -38,12 +42,15 @@ internal sealed class MainForm : Form
 
     public event EventHandler? AlwaysOnTopChanged;
 
+    // Raised after the interface language changed, so the tray menu can follow.
+    public event EventHandler? LocalizationChanged;
+
     public MainForm(AppSettings settings, ApiClient api)
     {
         _settings = settings;
         _api = api;
 
-        Text = "Project Status";
+        Text = Strings.AppTitle;
         StartPosition = FormStartPosition.Manual;
         ShowInTaskbar = false;
         TopMost = settings.AlwaysOnTop;
@@ -69,20 +76,22 @@ internal sealed class MainForm : Form
 
         // Project lifecycle lives in Settings now, so the toolbar only carries the mode switch,
         // Settings and Pin.
-        _settingsButton = new ToolStripButton("Settings");
+        _settingsButton = new ToolStripButton(Strings.ToolbarSettings);
         _settingsButton.Click += async (_, _) => await ShowSettingsDialogAsync();
 
-        _modeButton = new ToolStripButton("Compact")
+        _modeButton = new ToolStripButton(Strings.ToolbarCompact)
         {
-            ToolTipText = "Show only the project and its status"
+            ToolTipText = Strings.ToolbarCompactTooltip
         };
         _modeButton.Click += (_, _) => SetCompactMode(!_compact);
 
-        _pinButton = new ToolStripButton("Pin")
+        _pinButton = new ToolStripButton(Strings.ToolbarPin)
         {
+            // Named, because the caption is translated and the button is looked up by identity.
+            Name = PinButtonName,
             CheckOnClick = true,
             Checked = settings.AlwaysOnTop,
-            ToolTipText = "Keep the window above other windows"
+            ToolTipText = Strings.ToolbarPinTooltipOff
         };
         _pinButton.CheckedChanged += (_, _) =>
         {
@@ -101,15 +110,24 @@ internal sealed class MainForm : Form
         _settingsButton.MouseDown += (_, _) => CommitPendingGridEdit();
         _modeButton.MouseDown += (_, _) => CommitPendingGridEdit();
 
+        // In compact mode the empty part of the toolbar works as a window handle too.
+        _toolStrip.MouseDown += (_, e) =>
+        {
+            if (_compact && _toolStrip.GetItemAt(e.X, e.Y) is null)
+            {
+                BeginWindowDrag();
+            }
+        };
+
         UpdatePinVisual(settings.AlwaysOnTop);
 
         _grid = BuildGrid();
         _grid.Dock = DockStyle.Fill;
 
         _statusStrip = new StatusStrip();
-        _syncLabel = new ToolStripStatusLabel("No connection");
+        _syncLabel = new ToolStripStatusLabel(Strings.SyncNoConnection);
         var spring = new ToolStripStatusLabel { Spring = true };
-        _deviceLabel = new ToolStripStatusLabel($"This PC: {settings.LocalDeviceName}");
+        _deviceLabel = new ToolStripStatusLabel(Strings.DeviceLabelFormat(settings.LocalDeviceName));
         _statusStrip.Items.Add(_syncLabel);
         _statusStrip.Items.Add(spring);
         _statusStrip.Items.Add(_deviceLabel);
@@ -120,6 +138,7 @@ internal sealed class MainForm : Form
 
         ApplyModeLayout();
         ApplyAppearance();
+        ApplyLocalization();
 
         _pollTimer = new System.Windows.Forms.Timer { Interval = PollIntervalMs };
         _pollTimer.Tick += async (_, _) => await RefreshStateAsync(force: false);
@@ -258,9 +277,15 @@ internal sealed class MainForm : Form
             _settings.ServerAddress = AppSettings.NormalizeServerAddress(_settings.ServerAddress);
             _api.SetServerAddress(_settings.ServerAddress);
             AutostartManager.Apply(_settings.StartWithWindows);
-            _deviceLabel.Text = $"This PC: {_settings.LocalDeviceName}";
+            _deviceLabel.Text = Strings.DeviceLabelFormat(_settings.LocalDeviceName);
             SetAlwaysOnTop(_settings.AlwaysOnTop);
             ApplyAppearance();
+
+            // A language change applies straight away to this window and the tray menu; the Settings
+            // dialog itself picks it up the next time it is opened.
+            Localization.Apply(_settings.Language);
+            ApplyLocalization();
+            LocalizationChanged?.Invoke(this, EventArgs.Empty);
             _stateSignature = string.Empty;
 
             // Settings edits statuses and devices on the server. The main form has to show them when
@@ -378,7 +403,7 @@ internal sealed class MainForm : Form
         _grid.Columns[UpdatedColumn].Visible = !_compact;
         _statusStrip.Visible = !_compact;
         _settingsButton.Visible = !_compact;
-        _modeButton.Text = _compact ? "Full" : "Compact";
+        _modeButton.Text = _compact ? Strings.ToolbarFull : Strings.ToolbarCompact;
 
         // Windows edge snapping needs WS_MAXIMIZEBOX, so dropping it disables snapping for this
         // window only. WS_THICKFRAME stays, which keeps the standard frame and manual resizing.
@@ -416,7 +441,7 @@ internal sealed class MainForm : Form
         grid.Columns.Add(new DataGridViewTextBoxColumn
         {
             Name = NameColumn,
-            HeaderText = "Project",
+            HeaderText = Strings.ColumnProject,
             AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill,
             FillWeight = 24,
             ReadOnly = true
@@ -425,7 +450,7 @@ internal sealed class MainForm : Form
         grid.Columns.Add(new DataGridViewComboBoxColumn
         {
             Name = StatusColumn,
-            HeaderText = "Status",
+            HeaderText = Strings.ColumnStatus,
             Width = 120,
             DisplayStyle = DataGridViewComboBoxDisplayStyle.DropDownButton,
             FlatStyle = FlatStyle.Flat
@@ -434,7 +459,7 @@ internal sealed class MainForm : Form
         grid.Columns.Add(new DataGridViewComboBoxColumn
         {
             Name = DeviceColumn,
-            HeaderText = "Device",
+            HeaderText = Strings.ColumnDevice,
             Width = 100,
             DisplayStyle = DataGridViewComboBoxDisplayStyle.DropDownButton,
             FlatStyle = FlatStyle.Flat
@@ -443,7 +468,7 @@ internal sealed class MainForm : Form
         grid.Columns.Add(new DataGridViewTextBoxColumn
         {
             Name = NoteColumn,
-            HeaderText = "Note",
+            HeaderText = Strings.ColumnNote,
             AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill,
             FillWeight = 38,
             MaxInputLength = 200
@@ -452,7 +477,7 @@ internal sealed class MainForm : Form
         grid.Columns.Add(new DataGridViewTextBoxColumn
         {
             Name = UpdatedColumn,
-            HeaderText = "Updated",
+            HeaderText = Strings.ColumnUpdated,
             Width = 115,
             ReadOnly = true
         });
@@ -532,12 +557,21 @@ internal sealed class MainForm : Form
         // Leaving the grid (toolbar, taskbar, another window) commits the pending edit as well.
         grid.Leave += (_, _) => CommitPendingGridEdit();
 
-        // A click on the empty area below the rows ends the edit like Enter does.
+        // A click on the empty area below the rows ends the edit like Enter does. In compact mode the
+        // empty area and the header strip also work as a window handle, because the small window
+        // leaves little else to grab for moving it.
         grid.MouseDown += (_, e) =>
         {
-            if (grid.HitTest(e.X, e.Y).Type == DataGridViewHitTestType.None)
+            var hit = grid.HitTest(e.X, e.Y);
+            if (hit.Type == DataGridViewHitTestType.None)
             {
                 CommitPendingGridEdit();
+            }
+
+            if (_compact &&
+                hit.Type is DataGridViewHitTestType.None or DataGridViewHitTestType.ColumnHeader)
+            {
+                BeginWindowDrag();
             }
         };
 
@@ -716,14 +750,14 @@ internal sealed class MainForm : Form
 
         if (string.IsNullOrWhiteSpace(name))
         {
-            ShowError("Project name cannot be blank.");
+            ShowError(Strings.ErrorProjectNameBlank);
             await RefreshStateAsync(force: true);
             return;
         }
 
         if (note.Length > 200 || note.Contains('\r') || note.Contains('\n'))
         {
-            ShowError("Note must be one line and at most 200 characters.");
+            ShowError(Strings.ErrorNoteInvalid);
             await RefreshStateAsync(force: true);
             return;
         }
@@ -796,7 +830,7 @@ internal sealed class MainForm : Form
     {
         var custom = !AppearanceSettings.ParseBackgroundColor(_settings.BackgroundColor).IsEmpty;
 
-        _syncLabel.Text = _syncIsOk ? "Sync: OK" : "No connection";
+        _syncLabel.Text = _syncIsOk ? Strings.SyncOk : Strings.SyncNoConnection;
         _syncLabel.ForeColor = _syncIsOk
             ? (custom ? Color.FromArgb(126, 231, 135) : Color.DarkGreen)
             : (custom ? Color.FromArgb(255, 138, 128) : Color.Firebrick);
@@ -861,8 +895,49 @@ internal sealed class MainForm : Form
         _pinButton.BackColor = active ? PinActiveBackColor : Color.Empty;
         _pinButton.ForeColor = active ? Color.White : Color.Empty;
         _pinButton.ToolTipText = active
-            ? "Always on top is on"
-            : "Keep the window above other windows";
+            ? Strings.ToolbarPinTooltipOn
+            : Strings.ToolbarPinTooltipOff;
+    }
+
+    // Every user-visible caption of this window lives here, so the language can be changed without
+    // restarting the application.
+    public void ApplyLocalization()
+    {
+        Text = Strings.AppTitle;
+        _settingsButton.Text = Strings.ToolbarSettings;
+        _pinButton.Text = Strings.ToolbarPin;
+        _modeButton.Text = _compact ? Strings.ToolbarFull : Strings.ToolbarCompact;
+        _modeButton.ToolTipText = Strings.ToolbarCompactTooltip;
+        UpdatePinVisual(_pinButton.Checked);
+
+        _grid.Columns[NameColumn].HeaderText = Strings.ColumnProject;
+        _grid.Columns[StatusColumn].HeaderText = Strings.ColumnStatus;
+        _grid.Columns[DeviceColumn].HeaderText = Strings.ColumnDevice;
+        _grid.Columns[NoteColumn].HeaderText = Strings.ColumnNote;
+        _grid.Columns[UpdatedColumn].HeaderText = Strings.ColumnUpdated;
+
+        _deviceLabel.Text = Strings.DeviceLabelFormat(_settings.LocalDeviceName);
+        ApplySyncLabel();
+    }
+
+    [DllImport("user32.dll")]
+    private static extern bool ReleaseCapture();
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr SendMessage(IntPtr window, int message, IntPtr wParam, IntPtr lParam);
+
+    // Compact mode has almost no chrome left to grab, so a press on its empty surface is handed to
+    // the system's own caption drag. That keeps TopMost, the standard frame and the no-snap styles
+    // untouched.
+    private void BeginWindowDrag()
+    {
+        if (!_compact || !Visible)
+        {
+            return;
+        }
+
+        ReleaseCapture();
+        SendMessage(Handle, WmNcLButtonDown, HtCaption, IntPtr.Zero);
     }
 
     private void RestoreWindowBounds()
@@ -905,7 +980,7 @@ internal sealed class MainForm : Form
 
     private void ShowError(string message)
     {
-        MessageBox.Show(this, message, "Project Status", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        MessageBox.Show(this, message, Strings.AppTitle, MessageBoxButtons.OK, MessageBoxIcon.Error);
     }
 
     private sealed record ChoiceItem(string Id, string Name);

@@ -35,9 +35,10 @@ internal static class CoreUiBehavior
             return;
         }
 
+        // Found by name: the caption is localised, the identity of the button is not.
         var pinButton = toolStrip.Items
             .OfType<ToolStripButton>()
-            .FirstOrDefault(item => string.Equals(item.Text, "Pin", StringComparison.Ordinal));
+            .FirstOrDefault(item => string.Equals(item.Name, "PinButton", StringComparison.Ordinal));
 
         var modalDepth = 0;
         var topMostSuspendedForModal = false;

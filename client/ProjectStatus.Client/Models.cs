@@ -16,6 +16,10 @@ internal sealed class StateSnapshot
 
 internal sealed class ProjectDto
 {
+    // Used as ListBox.DisplayMember wherever projects are listed, so a list shows the project name
+    // instead of the type name of the item.
+    public const string DisplayMemberProperty = nameof(Name);
+
     [JsonPropertyName("id")]
     public int Id { get; set; }
 

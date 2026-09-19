@@ -47,6 +47,9 @@ public class SettingsCompatibilityTests
         Assert.Equal(100, settings.CompactOpacity);
         Assert.Equal(AppearanceSettings.DefaultBackgroundColor, settings.BackgroundColor);
         Assert.Equal(string.Empty, settings.BackgroundColor);
+
+        // A settings file written before the language existed is treated as Auto.
+        Assert.Equal(Localization.AutoValue, settings.Language);
     }
 
     [Fact]
@@ -83,6 +86,7 @@ public class SettingsCompatibilityTests
             CompactMode = true,
             CompactOpacity = 85,
             BackgroundColor = "#123456",
+            Language = Localization.RussianValue,
             CompactWindowX = 40,
             CompactWindowY = 50,
             CompactWindowWidth = 260,
@@ -100,6 +104,7 @@ public class SettingsCompatibilityTests
         Assert.True(restored.CompactMode);
         Assert.Equal(85, restored.CompactOpacity);
         Assert.Equal("#123456", restored.BackgroundColor);
+        Assert.Equal(Localization.RussianValue, restored.Language);
         Assert.Equal(40, restored.CompactWindowX);
         Assert.Equal(260, restored.CompactWindowWidth);
         Assert.Equal(700, restored.WindowX);

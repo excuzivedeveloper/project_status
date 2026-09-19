@@ -30,13 +30,13 @@ internal static class UpdateDownloader
     {
         if (!IsTrusted(uri))
         {
-            throw new InvalidOperationException("The update file must be downloaded from the trusted release host.");
+            throw new InvalidOperationException(Strings.DownloadTrustedHostRequired);
         }
 
         var fileName = Path.GetFileName(uri.LocalPath);
         if (string.IsNullOrWhiteSpace(fileName))
         {
-            throw new InvalidOperationException("The update download has no file name.");
+            throw new InvalidOperationException(Strings.DownloadMissingFileName);
         }
 
         var directory = Path.Combine(Path.GetTempPath(), "ProjectStatus", "update");
@@ -65,7 +65,7 @@ internal static class UpdateDownloader
     {
         if (!IsTrusted(uri))
         {
-            throw new InvalidOperationException("The checksum must be downloaded from the trusted release host.");
+            throw new InvalidOperationException(Strings.ChecksumTrustedHostRequired);
         }
 
         using var response = await Http.GetAsync(uri, cancellationToken);

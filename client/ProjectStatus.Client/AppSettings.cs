@@ -27,6 +27,9 @@ internal sealed class AppSettings
     public int CompactOpacity { get; set; } = AppearanceSettings.DefaultOpacityPercent;
     public string BackgroundColor { get; set; } = AppearanceSettings.DefaultBackgroundColor;
 
+    // Interface language: "auto" follows Windows, otherwise "ru" or "en".
+    public string Language { get; set; } = Localization.AutoValue;
+
     public string LastUpdatePromptVersion { get; set; } = string.Empty;
 
     // Full mode geometry. These four keep their original names so an existing settings.json loads
@@ -45,7 +48,7 @@ internal sealed class AppSettings
         value = value.Trim();
         if (string.IsNullOrWhiteSpace(value))
         {
-            throw new ArgumentException("Server address is required.");
+            throw new ArgumentException(Strings.ErrorServerRequired);
         }
 
         if (!value.Contains("://", StringComparison.Ordinal))
@@ -57,7 +60,7 @@ internal sealed class AppSettings
             (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps) ||
             string.IsNullOrWhiteSpace(uri.Host))
         {
-            throw new ArgumentException("Enter a valid HTTP or HTTPS server address.");
+            throw new ArgumentException(Strings.ErrorServerInvalid);
         }
 
         return uri.GetLeftPart(UriPartial.Authority).TrimEnd('/');

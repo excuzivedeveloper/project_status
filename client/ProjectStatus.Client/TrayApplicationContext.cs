@@ -8,11 +8,15 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly ApiClient _api;
     private readonly MainForm _mainForm;
     private readonly NotifyIcon _notifyIcon;
+    private readonly ToolStripMenuItem _openItem;
     private readonly ToolStripMenuItem _alwaysOnTopItem;
     private readonly ToolStripMenuItem _updateItem;
+    private readonly ToolStripMenuItem _settingsItem;
+    private readonly ToolStripMenuItem _exitItem;
     private readonly SingleInstance _singleInstance;
     private int _activationRequested;
     private Uri? _updateUri;
+    private string? _updateVersion;
     private UpdatePromptForm? _updatePrompt;
     private bool _exiting;
 
@@ -24,41 +28,40 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _mainForm = new MainForm(settings, _api);
         MainForm = _mainForm;
 
-        _alwaysOnTopItem = new ToolStripMenuItem("Always on top")
+        _alwaysOnTopItem = new ToolStripMenuItem
         {
             Checked = settings.AlwaysOnTop,
             CheckOnClick = false
         };
         _alwaysOnTopItem.Click += (_, _) => _mainForm.SetAlwaysOnTop(!_mainForm.TopMost);
 
-        var openItem = new ToolStripMenuItem("Open");
-        openItem.Click += (_, _) => _mainForm.ShowFromTray();
+        _openItem = new ToolStripMenuItem();
+        _openItem.Click += (_, _) => _mainForm.ShowFromTray();
 
-        _updateItem = new ToolStripMenuItem("Update available")
+        _updateItem = new ToolStripMenuItem
         {
             Visible = false
         };
         _updateItem.Click += (_, _) => OpenUpdateDownload();
 
-        var settingsItem = new ToolStripMenuItem("Settings");
-        settingsItem.Click += async (_, _) => await _mainForm.ShowSettingsDialogAsync();
+        _settingsItem = new ToolStripMenuItem();
+        _settingsItem.Click += async (_, _) => await _mainForm.ShowSettingsDialogAsync();
 
-        var exitItem = new ToolStripMenuItem("Exit");
-        exitItem.Click += (_, _) => ExitApplication();
+        _exitItem = new ToolStripMenuItem();
+        _exitItem.Click += (_, _) => ExitApplication();
 
         var menu = new ContextMenuStrip();
-        menu.Items.Add(openItem);
+        menu.Items.Add(_openItem);
         menu.Items.Add(_updateItem);
         menu.Items.Add(_alwaysOnTopItem);
-        menu.Items.Add(settingsItem);
+        menu.Items.Add(_settingsItem);
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add(exitItem);
+        menu.Items.Add(_exitItem);
 
         var icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath) ?? SystemIcons.Application;
         _notifyIcon = new NotifyIcon
         {
             Icon = icon,
-            Text = "Project Status",
             ContextMenuStrip = menu,
             Visible = true
         };
@@ -68,6 +71,10 @@ internal sealed class TrayApplicationContext : ApplicationContext
         {
             _alwaysOnTopItem.Checked = _mainForm.TopMost;
         };
+
+        // The interface language can be changed in Settings while this tray menu is alive.
+        _mainForm.LocalizationChanged += (_, _) => ApplyLocalization();
+        ApplyLocalization();
 
         // The pipe listener reports on a background thread, so the request is only recorded there
         // and applied here once the message queue goes idle.
@@ -91,6 +98,21 @@ internal sealed class TrayApplicationContext : ApplicationContext
             _singleInstance.StartListening(OnActivationRequested);
         };
         Application.Idle += idleHandler;
+    }
+
+    private void ApplyLocalization()
+    {
+        _openItem.Text = Strings.TrayOpen;
+        _settingsItem.Text = Strings.TraySettings;
+        _exitItem.Text = Strings.TrayExit;
+        _alwaysOnTopItem.Text = Strings.TrayAlwaysOnTop;
+
+        if (_updateItem.Visible && _updateVersion is not null)
+        {
+            _updateItem.Text = Strings.TrayUpdateAvailableFormat(_updateVersion);
+        }
+
+        _notifyIcon.Text = _updateItem.Visible ? Strings.TrayTooltipUpdate : Strings.TrayTooltip;
     }
 
     private void OnActivationRequested()
@@ -117,10 +139,10 @@ internal sealed class TrayApplicationContext : ApplicationContext
         }
 
         _updateUri = update.DownloadUri;
-        _updateItem.Text = $"Update available v{update.Version}";
+        _updateVersion = update.Version;
         _updateItem.Visible = true;
         ShowUpdatePromptIfNeeded(update);
-        _notifyIcon.Text = "Project Status — update available";
+        ApplyLocalization();
     }
 
     // The tray item is the fallback and stays visible. The popup is shown once per newer version:
@@ -155,7 +177,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     {
         if (update.InstallerUri is null || update.ChecksumUri is null)
         {
-            return "This release has no installer to update from. Use the tray item to open the release page.";
+            return Strings.UpdateNoInstaller;
         }
 
         string installerPath;
@@ -167,13 +189,13 @@ internal sealed class TrayApplicationContext : ApplicationContext
         }
         catch (Exception ex)
         {
-            return $"The update could not be downloaded: {ex.Message}";
+            return Strings.UpdateDownloadFailedFormat(ex.Message);
         }
 
         var expectedHash = UpdateChecksum.ParseHash(checksumText, update.InstallerFileName);
         if (expectedHash is null)
         {
-            return "Update verification failed.";
+            return Strings.UpdateVerificationFailed;
         }
 
         string actualHash;
@@ -183,12 +205,12 @@ internal sealed class TrayApplicationContext : ApplicationContext
         }
         catch (Exception ex)
         {
-            return $"Update verification failed: {ex.Message}";
+            return Strings.UpdateVerificationFailedFormat(ex.Message);
         }
 
         if (!UpdateChecksum.Matches(expectedHash, actualHash))
         {
-            return "Update verification failed.";
+            return Strings.UpdateVerificationFailed;
         }
 
         try
@@ -201,7 +223,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         }
         catch (Exception ex)
         {
-            return $"The installer could not be started: {ex.Message}";
+            return Strings.UpdateLaunchFailedFormat(ex.Message);
         }
 
         // The installer was started, so the running application gets out of its way.

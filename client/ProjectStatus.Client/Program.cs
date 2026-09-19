@@ -25,6 +25,10 @@ internal static class Program
         }
 
         var settings = AppSettingsStore.Load();
+
+        // Pick the interface language before any window is created.
+        Localization.Apply(settings.Language);
+
         if (!settings.IsConfigured)
         {
             using var setup = new FirstRunForm(settings);
