@@ -48,6 +48,10 @@ internal static class Strings
     public static string ButtonRename => Localization.Get(nameof(ButtonRename));
     public static string ButtonDelete => Localization.Get(nameof(ButtonDelete));
     public static string ButtonColor => Localization.Get(nameof(ButtonColor));
+    public static string ButtonHide => Localization.Get(nameof(ButtonHide));
+    public static string ButtonShow => Localization.Get(nameof(ButtonShow));
+    public static string OptionShowHiddenProjects => Localization.Get(nameof(OptionShowHiddenProjects));
+    public static string ProjectHiddenSuffixFormat(object value) => Localization.Format(nameof(ProjectHiddenSuffixFormat), value);
     public static string ButtonSave => Localization.Get(nameof(ButtonSave));
     public static string ButtonCancel => Localization.Get(nameof(ButtonCancel));
     public static string ButtonOk => Localization.Get(nameof(ButtonOk));

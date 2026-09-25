@@ -107,6 +107,137 @@ class StorageTests(unittest.TestCase):
         with self.assertRaises(NotFoundError):
             self.storage.create_project("Example", status_id=999)
 
+    def test_new_project_is_visible_by_default(self):
+        project = self.storage.create_project("Example")
+
+        self.assertIs(project["is_hidden"], False)
+
+        state = self.storage.state()
+        self.assertIs(state["projects"][0]["is_hidden"], False)
+
+        fetched = self.storage.get_project(project["id"])
+        self.assertIs(fetched["is_hidden"], False)
+
+    def test_hide_and_unhide_flip_only_the_flag(self):
+        status = self.storage.create_status("Review", "#3366FF")
+        device = self.storage.create_device("Laptop")
+        project = self.storage.create_project(
+            "Example", status_id=status["id"], device_id=device["id"], note="PR #1"
+        )
+
+        hidden = self.storage.set_project_hidden(project["id"], True)
+        self.assertIs(hidden["is_hidden"], True)
+        self.assertEqual(hidden["name"], "Example")
+        self.assertEqual(hidden["status_id"], status["id"])
+        self.assertEqual(hidden["device_id"], device["id"])
+        self.assertEqual(hidden["note"], "PR #1")
+
+        state = self.storage.state()
+        by_id = {item["id"]: item for item in state["projects"]}
+        self.assertIs(by_id[project["id"]]["is_hidden"], True)
+
+        visible = self.storage.set_project_hidden(project["id"], False)
+        self.assertIs(visible["is_hidden"], False)
+        self.assertEqual(visible["name"], "Example")
+        self.assertEqual(visible["status_id"], status["id"])
+        self.assertEqual(visible["device_id"], device["id"])
+        self.assertEqual(visible["note"], "PR #1")
+
+    def test_rename_without_flag_preserves_hidden(self):
+        project = self.storage.create_project("Example")
+        self.storage.set_project_hidden(project["id"], True)
+
+        # Old clients send only name/status/device/note: the flag must survive.
+        renamed = self.storage.update_project(
+            project["id"],
+            name="Renamed",
+            status_id=None,
+            device_id=None,
+            note="",
+        )
+
+        self.assertEqual(renamed["name"], "Renamed")
+        self.assertIs(renamed["is_hidden"], True)
+
+    def test_update_with_explicit_flag_changes_visibility(self):
+        project = self.storage.create_project("Example")
+
+        hidden = self.storage.update_project(
+            project["id"],
+            name="Example",
+            status_id=None,
+            device_id=None,
+            note="",
+            is_hidden=True,
+        )
+        self.assertIs(hidden["is_hidden"], True)
+
+        visible = self.storage.update_project(
+            project["id"],
+            name="Example",
+            status_id=None,
+            device_id=None,
+            note="",
+            is_hidden=False,
+        )
+        self.assertIs(visible["is_hidden"], False)
+
+    def test_hidden_project_can_be_renamed_and_deleted(self):
+        project = self.storage.create_project("Example")
+        self.storage.set_project_hidden(project["id"], True)
+
+        renamed = self.storage.update_project(
+            project["id"],
+            name="New name",
+            status_id=None,
+            device_id=None,
+            note="kept",
+            is_hidden=True,
+        )
+        self.assertEqual(renamed["name"], "New name")
+        self.assertIs(renamed["is_hidden"], True)
+
+        self.storage.delete_project(project["id"])
+        with self.assertRaises(NotFoundError):
+            self.storage.get_project(project["id"])
+
+    def test_migration_keeps_existing_projects_visible(self):
+        import sqlite3
+
+        legacy_path = str(Path(self.tmp.name) / "legacy.db")
+        conn = sqlite3.connect(legacy_path)
+        conn.executescript(
+            """
+            CREATE TABLE statuses (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+                color TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );
+            CREATE TABLE devices (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+                created_at TEXT NOT NULL
+            );
+            CREATE TABLE projects (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+                status_id INTEGER NULL REFERENCES statuses(id) ON DELETE RESTRICT,
+                device_id INTEGER NULL REFERENCES devices(id) ON DELETE RESTRICT,
+                note TEXT NOT NULL DEFAULT '',
+                updated_at TEXT NOT NULL
+            );
+            INSERT INTO projects(name, note, updated_at) VALUES ('Legacy', '', '2026-01-01T00:00:00+00:00');
+            """
+        )
+        conn.commit()
+        conn.close()
+
+        storage = Storage(legacy_path)
+        state = storage.state()
+        self.assertEqual(len(state["projects"]), 1)
+        self.assertIs(state["projects"][0]["is_hidden"], False)
+
 
 if __name__ == "__main__":
     unittest.main()

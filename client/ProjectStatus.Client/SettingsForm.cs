@@ -11,6 +11,9 @@ internal sealed class SettingsForm : Form
     private readonly ListBox _projectsList;
     private readonly ListBox _statusesList;
     private readonly ListBox _devicesList;
+    private readonly CheckBox _showHiddenCheck;
+    private readonly Button _hideButton;
+    private List<ProjectDto> _allProjects = [];
 
     // Built by BuildAppearanceTab, which runs from the constructor.
     private TrackBar _opacityTrack = null!;
@@ -114,9 +117,21 @@ internal sealed class SettingsForm : Form
         _projectsList = new ListBox
         {
             Dock = DockStyle.Fill,
-            // Without this the list shows the type name of the item (ProjectStatus.Client.ProjectDto).
-            DisplayMember = ProjectDto.DisplayMemberProperty
+            DrawMode = DrawMode.OwnerDrawFixed,
+            ItemHeight = Math.Max(18, Font.Height + 6)
         };
+        _projectsList.DrawItem += DrawProjectItem;
+        _projectsList.SelectedIndexChanged += (_, _) => UpdateHideButton();
+        // Off by default: hidden projects stay out of the way until requested.
+        _showHiddenCheck = new CheckBox
+        {
+            Text = Strings.OptionShowHiddenProjects,
+            Checked = false,
+            AutoSize = true,
+            Dock = DockStyle.Fill
+        };
+        _showHiddenCheck.CheckedChanged += (_, _) => ApplyProjectsFilter();
+        _hideButton = ActionButton(Strings.ButtonHide, async () => await ToggleProjectHiddenAsync());
         _statusesList = new ListBox
         {
             Dock = DockStyle.Fill,
@@ -253,18 +268,21 @@ internal sealed class SettingsForm : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 1,
-            RowCount = 2,
+            RowCount = 3,
             Padding = new Padding(6)
         };
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.Controls.Add(_projectsList, 0, 0);
+        layout.Controls.Add(_showHiddenCheck, 0, 1);
 
         var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true };
         buttons.Controls.Add(ActionButton(Strings.ButtonAdd, async () => await AddProjectAsync()));
         buttons.Controls.Add(ActionButton(Strings.ButtonRename, async () => await RenameProjectAsync()));
+        buttons.Controls.Add(_hideButton);
         buttons.Controls.Add(ActionButton(Strings.ButtonDelete, async () => await DeleteProjectAsync()));
-        layout.Controls.Add(buttons, 0, 1);
+        layout.Controls.Add(buttons, 0, 2);
         page.Controls.Add(layout);
         return page;
     }
@@ -348,12 +366,14 @@ internal sealed class SettingsForm : Form
             var state = await api.GetStateAsync();
 
             var localText = _localDeviceCombo.Text;
+            var selectedId = (_projectsList.SelectedItem as ProjectDto)?.Id;
 
-            _projectsList.Items.Clear();
-            foreach (var project in state.Projects)
-            {
-                _projectsList.Items.Add(project);
-            }
+            // The full list is kept so the "show hidden" checkbox is a view filter only:
+            // hidden projects remain accessible here even while the main window hides them.
+            _allProjects = state.Projects
+                .OrderBy(project => project.Name, StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+            ApplyProjectsFilter(selectedId);
 
             _statusesList.Items.Clear();
             foreach (var status in state.Statuses)
@@ -377,6 +397,105 @@ internal sealed class SettingsForm : Form
                 ShowError(ex.Message);
             }
         }
+    }
+
+    private void ApplyProjectsFilter(int? selectedId = null)
+    {
+        if (_projectsList.IsDisposed)
+        {
+            return;
+        }
+
+        selectedId ??= (_projectsList.SelectedItem as ProjectDto)?.Id;
+
+        _projectsList.BeginUpdate();
+        try
+        {
+            _projectsList.Items.Clear();
+            foreach (var project in ProjectVisibility.ForSettings(_allProjects, _showHiddenCheck.Checked))
+            {
+                _projectsList.Items.Add(project);
+            }
+
+            if (selectedId is int id)
+            {
+                foreach (var item in _projectsList.Items.OfType<ProjectDto>())
+                {
+                    if (item.Id == id)
+                    {
+                        _projectsList.SelectedItem = item;
+                        break;
+                    }
+                }
+            }
+        }
+        finally
+        {
+            _projectsList.EndUpdate();
+        }
+
+        UpdateHideButton();
+    }
+
+    private void UpdateHideButton()
+    {
+        if (_hideButton.IsDisposed)
+        {
+            return;
+        }
+
+        var selected = _projectsList.SelectedItem as ProjectDto;
+        _hideButton.Enabled = selected is not null;
+        _hideButton.Text = selected is not null && selected.IsHidden
+            ? Strings.ButtonShow
+            : Strings.ButtonHide;
+    }
+
+    // Hidden items are drawn with a localized suffix and grayed out, so Hide stays
+    // visually distinct from Delete. Items stay ProjectDto: the buttons above rely on
+    // SelectedItem being the project itself.
+    private static void DrawProjectItem(object? sender, DrawItemEventArgs e)
+    {
+        if (sender is not ListBox list || e.Index < 0 || e.Index >= list.Items.Count)
+        {
+            return;
+        }
+
+        if (list.Items[e.Index] is not ProjectDto project)
+        {
+            return;
+        }
+
+        var selected = (e.State & DrawItemState.Selected) == DrawItemState.Selected;
+        using (var background = new SolidBrush(selected ? SystemColors.Highlight : list.BackColor))
+        {
+            e.Graphics.FillRectangle(background, e.Bounds);
+        }
+
+        var text = ProjectVisibility.DisplayName(project);
+        var color = selected
+            ? SystemColors.HighlightText
+            : project.IsHidden ? SystemColors.GrayText : list.ForeColor;
+
+        TextRenderer.DrawText(
+            e.Graphics,
+            text,
+            list.Font,
+            e.Bounds,
+            color,
+            TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+
+        e.DrawFocusRectangle();
+    }
+
+    private async Task ToggleProjectHiddenAsync()
+    {
+        if (_projectsList.SelectedItem is not ProjectDto selected)
+        {
+            return;
+        }
+
+        await RunSharedMutationAsync(api => api.SetProjectHiddenAsync(selected.Id, !selected.IsHidden));
     }
 
     // Project lifecycle moved here from the main window: the grid no longer creates, renames or
@@ -415,8 +534,9 @@ internal sealed class SettingsForm : Form
         await RunSharedMutationAsync(async api =>
         {
             // The list in this dialog can be seconds old and another client may have changed the
-            // project since it was read. Only the name is taken from the dialog; status, device and
-            // note are taken from the freshly read state, so a rename cannot put stale values back.
+            // project since it was read. Only the name is taken from the dialog; status, device,
+            // note and the hidden flag are taken from the freshly read state, so a rename cannot
+            // put stale values back or accidentally unhide the project.
             var state = await api.GetStateAsync();
             var current = state.Projects.FirstOrDefault(project => project.Id == selected.Id);
             if (current is null)
@@ -424,13 +544,8 @@ internal sealed class SettingsForm : Form
                 throw new ApiException(Strings.ErrorProjectGone);
             }
 
-            return await api.UpdateProjectAsync(current.Id, new ProjectPayload
-            {
-                Name = name.Trim(),
-                StatusId = current.StatusId,
-                DeviceId = current.DeviceId,
-                Note = current.Note
-            });
+            return await api.UpdateProjectAsync(
+                current.Id, ProjectVisibility.WithName(current, name.Trim()));
         });
     }
 

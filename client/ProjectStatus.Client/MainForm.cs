@@ -685,7 +685,9 @@ internal sealed class MainForm : Form
             deviceColumn.ValueType = typeof(string);
 
             _grid.Rows.Clear();
-            foreach (var project in _state.Projects)
+            // Hidden projects never take part in the main-grid binding, in Full and in Compact.
+            // They stay on the server and in Settings; the regular poll picks up hide/unhide.
+            foreach (var project in ProjectVisibility.VisibleOnly(_state.Projects))
             {
                 var rowIndex = _grid.Rows.Add(
                     project.Name,
@@ -779,12 +781,15 @@ internal sealed class MainForm : Form
         await _apiGate.WaitAsync();
         try
         {
+            // The grid never edits visibility itself, but the current flag is sent back so a
+            // status/device/note change cannot accidentally unhide the row.
             var updated = await _api.UpdateProjectAsync(current.Id, new ProjectPayload
             {
                 Name = name,
                 StatusId = statusId,
                 DeviceId = deviceId,
-                Note = note
+                Note = note,
+                IsHidden = current.IsHidden
             });
 
             row.Tag = updated;
@@ -880,7 +885,8 @@ internal sealed class MainForm : Form
         {
             builder.Append("P:").Append(project.Id).Append(':').Append(project.Name).Append(':')
                 .Append(project.StatusId).Append(':').Append(project.DeviceId).Append(':')
-                .Append(project.Note).Append(':').Append(project.UpdatedAt).Append('|');
+                .Append(project.Note).Append(':').Append(project.IsHidden).Append(':')
+                .Append(project.UpdatedAt).Append('|');
         }
 
         return builder.ToString();

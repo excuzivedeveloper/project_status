@@ -144,6 +144,18 @@
   <data name="ButtonColor" xml:space="preserve">
     <value>Цвет</value>
   </data>
+  <data name="ButtonHide" xml:space="preserve">
+    <value>Скрыть</value>
+  </data>
+  <data name="ButtonShow" xml:space="preserve">
+    <value>Показать</value>
+  </data>
+  <data name="OptionShowHiddenProjects" xml:space="preserve">
+    <value>Показывать скрытые проекты</value>
+  </data>
+  <data name="ProjectHiddenSuffixFormat" xml:space="preserve">
+    <value>{0} (скрыт)</value>
+  </data>
   <data name="ButtonSave" xml:space="preserve">
     <value>Сохранить</value>
   </data>

@@ -144,6 +144,18 @@
   <data name="ButtonColor" xml:space="preserve">
     <value>Color</value>
   </data>
+  <data name="ButtonHide" xml:space="preserve">
+    <value>Hide</value>
+  </data>
+  <data name="ButtonShow" xml:space="preserve">
+    <value>Show</value>
+  </data>
+  <data name="OptionShowHiddenProjects" xml:space="preserve">
+    <value>Show hidden projects</value>
+  </data>
+  <data name="ProjectHiddenSuffixFormat" xml:space="preserve">
+    <value>{0} (hidden)</value>
+  </data>
   <data name="ButtonSave" xml:space="preserve">
     <value>Save</value>
   </data>

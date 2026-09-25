@@ -55,6 +55,15 @@ internal sealed class ApiClient : IDisposable
         await EnsureSuccessAsync(response);
     }
 
+    public async Task<ProjectDto> SetProjectHiddenAsync(int projectId, bool hidden)
+    {
+        using var response = await _http.PostAsync(
+            BuildUri(hidden ? $"/api/projects/{projectId}/hide" : $"/api/projects/{projectId}/unhide"),
+            content: null);
+        await EnsureSuccessAsync(response);
+        return await ReadAsync<ProjectDto>(response);
+    }
+
     public async Task<StatusDto> CreateStatusAsync(StatusPayload payload)
     {
         using var response = await _http.PostAsJsonAsync(BuildUri("/api/statuses"), payload, JsonOptions);
