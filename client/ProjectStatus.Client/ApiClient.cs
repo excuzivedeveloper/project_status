@@ -5,10 +5,7 @@ namespace ProjectStatus.Client;
 
 internal sealed class ApiClient : IDisposable
 {
-    private readonly HttpClient _http = new()
-    {
-        Timeout = TimeSpan.FromSeconds(4)
-    };
+    private readonly HttpClient _http;
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
@@ -20,6 +17,23 @@ internal sealed class ApiClient : IDisposable
     public ApiClient(string serverAddress)
     {
         _serverAddress = AppSettings.NormalizeServerAddress(serverAddress);
+
+        _http = new HttpClient(CreateServerHandler())
+        {
+            Timeout = TimeSpan.FromSeconds(4)
+        };
+    }
+
+    // Server traffic bypasses the Windows system proxy: a VPN client that sets a
+    // system proxy can intercept and stall requests to the private server while
+    // direct access works. This handler is used only here; update/internet traffic
+    // keeps the normal Windows networking behavior.
+    internal static HttpClientHandler CreateServerHandler()
+    {
+        return new HttpClientHandler
+        {
+            UseProxy = false
+        };
     }
 
     public void SetServerAddress(string serverAddress)
