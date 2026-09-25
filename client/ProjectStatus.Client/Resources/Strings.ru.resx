@@ -1,0 +1,294 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AppTitle" xml:space="preserve">
+    <value>Project Status</value>
+  </data>
+  <data name="AppTitleSettings" xml:space="preserve">
+    <value>Project Status — Настройки</value>
+  </data>
+  <data name="AppTitleFirstRun" xml:space="preserve">
+    <value>Project Status — Первый запуск</value>
+  </data>
+  <data name="ToolbarSettings" xml:space="preserve">
+    <value>Настройки</value>
+  </data>
+  <data name="ToolbarPin" xml:space="preserve">
+    <value>Закрепить</value>
+  </data>
+  <data name="ToolbarPinTooltipOff" xml:space="preserve">
+    <value>Держать окно поверх остальных окон</value>
+  </data>
+  <data name="ToolbarPinTooltipOn" xml:space="preserve">
+    <value>Режим «поверх всех окон» включён</value>
+  </data>
+  <data name="ToolbarCompact" xml:space="preserve">
+    <value>Компактный</value>
+  </data>
+  <data name="ToolbarCompactTooltip" xml:space="preserve">
+    <value>Показывать только проект и его статус</value>
+  </data>
+  <data name="ToolbarFull" xml:space="preserve">
+    <value>Полный</value>
+  </data>
+  <data name="ColumnProject" xml:space="preserve">
+    <value>Проект</value>
+  </data>
+  <data name="ColumnStatus" xml:space="preserve">
+    <value>Статус</value>
+  </data>
+  <data name="ColumnDevice" xml:space="preserve">
+    <value>Устройство</value>
+  </data>
+  <data name="ColumnNote" xml:space="preserve">
+    <value>Заметка</value>
+  </data>
+  <data name="ColumnUpdated" xml:space="preserve">
+    <value>Обновлено</value>
+  </data>
+  <data name="SyncOk" xml:space="preserve">
+    <value>Синхронизация: ОК</value>
+  </data>
+  <data name="SyncNoConnection" xml:space="preserve">
+    <value>Нет соединения</value>
+  </data>
+  <data name="DeviceLabelFormat" xml:space="preserve">
+    <value>Этот компьютер: {0}</value>
+  </data>
+  <data name="ErrorProjectNameBlank" xml:space="preserve">
+    <value>Название проекта не может быть пустым.</value>
+  </data>
+  <data name="ErrorNoteInvalid" xml:space="preserve">
+    <value>Заметка должна быть в одну строку и не длиннее 200 символов.</value>
+  </data>
+  <data name="ErrorProjectGone" xml:space="preserve">
+    <value>Этот проект больше не существует на сервере.</value>
+  </data>
+  <data name="ErrorServerRequired" xml:space="preserve">
+    <value>Адрес сервера обязателен.</value>
+  </data>
+  <data name="ErrorServerInvalid" xml:space="preserve">
+    <value>Введите корректный адрес сервера HTTP или HTTPS.</value>
+  </data>
+  <data name="ErrorComputerNameRequired" xml:space="preserve">
+    <value>Имя этого компьютера обязательно.</value>
+  </data>
+  <data name="ErrorComputerNameTooLong" xml:space="preserve">
+    <value>Имя компьютера должно быть не длиннее 100 символов.</value>
+  </data>
+  <data name="LabelServer" xml:space="preserve">
+    <value>Сервер:</value>
+  </data>
+  <data name="LabelThisComputer" xml:space="preserve">
+    <value>Этот компьютер:</value>
+  </data>
+  <data name="LabelLanguage" xml:space="preserve">
+    <value>Язык:</value>
+  </data>
+  <data name="LanguageAuto" xml:space="preserve">
+    <value>Авто</value>
+  </data>
+  <data name="LanguageRussian" xml:space="preserve">
+    <value>Русский</value>
+  </data>
+  <data name="LanguageEnglish" xml:space="preserve">
+    <value>English</value>
+  </data>
+  <data name="OptionAlwaysOnTop" xml:space="preserve">
+    <value>Поверх всех окон</value>
+  </data>
+  <data name="OptionStartWithWindows" xml:space="preserve">
+    <value>Запускать с Windows</value>
+  </data>
+  <data name="ButtonTestConnection" xml:space="preserve">
+    <value>Проверить соединение</value>
+  </data>
+  <data name="TestOk" xml:space="preserve">
+    <value>ОК</value>
+  </data>
+  <data name="TestFailed" xml:space="preserve">
+    <value>Ошибка</value>
+  </data>
+  <data name="TabProjects" xml:space="preserve">
+    <value>Проекты</value>
+  </data>
+  <data name="TabStatuses" xml:space="preserve">
+    <value>Статусы</value>
+  </data>
+  <data name="TabDevices" xml:space="preserve">
+    <value>Устройства</value>
+  </data>
+  <data name="TabAppearance" xml:space="preserve">
+    <value>Оформление</value>
+  </data>
+  <data name="ButtonAdd" xml:space="preserve">
+    <value>Добавить</value>
+  </data>
+  <data name="ButtonRename" xml:space="preserve">
+    <value>Переименовать</value>
+  </data>
+  <data name="ButtonDelete" xml:space="preserve">
+    <value>Удалить</value>
+  </data>
+  <data name="ButtonColor" xml:space="preserve">
+    <value>Цвет</value>
+  </data>
+  <data name="ButtonHide" xml:space="preserve">
+    <value>Скрыть</value>
+  </data>
+  <data name="ButtonShow" xml:space="preserve">
+    <value>Показать</value>
+  </data>
+  <data name="OptionShowHiddenProjects" xml:space="preserve">
+    <value>Показывать скрытые проекты</value>
+  </data>
+  <data name="ProjectHiddenSuffixFormat" xml:space="preserve">
+    <value>{0} (скрыт)</value>
+  </data>
+  <data name="ButtonSave" xml:space="preserve">
+    <value>Сохранить</value>
+  </data>
+  <data name="ButtonCancel" xml:space="preserve">
+    <value>Отмена</value>
+  </data>
+  <data name="ButtonOk" xml:space="preserve">
+    <value>ОК</value>
+  </data>
+  <data name="ButtonContinue" xml:space="preserve">
+    <value>Продолжить</value>
+  </data>
+  <data name="LabelCompactOpacity" xml:space="preserve">
+    <value>Прозрачность компактного режима:</value>
+  </data>
+  <data name="CompactOpacityHintFormat" xml:space="preserve">
+    <value>Компактный режим использует {0}%. Полный режим всегда 100%.</value>
+  </data>
+  <data name="LabelBackground" xml:space="preserve">
+    <value>Фон:</value>
+  </data>
+  <data name="ButtonChooseColor" xml:space="preserve">
+    <value>Выбрать цвет...</value>
+  </data>
+  <data name="ButtonUseDefault" xml:space="preserve">
+    <value>По умолчанию</value>
+  </data>
+  <data name="ButtonResetAppearance" xml:space="preserve">
+    <value>Сбросить оформление</value>
+  </data>
+  <data name="PromptAddProjectTitle" xml:space="preserve">
+    <value>Добавить проект</value>
+  </data>
+  <data name="PromptRenameProjectTitle" xml:space="preserve">
+    <value>Переименовать проект</value>
+  </data>
+  <data name="PromptProjectName" xml:space="preserve">
+    <value>Название проекта:</value>
+  </data>
+  <data name="PromptAddStatusTitle" xml:space="preserve">
+    <value>Добавить статус</value>
+  </data>
+  <data name="PromptRenameStatusTitle" xml:space="preserve">
+    <value>Переименовать статус</value>
+  </data>
+  <data name="PromptStatusName" xml:space="preserve">
+    <value>Название статуса:</value>
+  </data>
+  <data name="PromptAddDeviceTitle" xml:space="preserve">
+    <value>Добавить устройство</value>
+  </data>
+  <data name="PromptRenameDeviceTitle" xml:space="preserve">
+    <value>Переименовать устройство</value>
+  </data>
+  <data name="PromptDeviceName" xml:space="preserve">
+    <value>Название устройства:</value>
+  </data>
+  <data name="ConfirmDeleteProjectFormat" xml:space="preserve">
+    <value>Удалить проект «{0}»?</value>
+  </data>
+  <data name="ConfirmDeleteStatusFormat" xml:space="preserve">
+    <value>Удалить статус «{0}»?</value>
+  </data>
+  <data name="ConfirmDeleteDeviceFormat" xml:space="preserve">
+    <value>Удалить устройство «{0}»?</value>
+  </data>
+  <data name="FirstRunIntro" xml:space="preserve">
+    <value>Перед запуском Project Status нужно указать две небольшие настройки.</value>
+  </data>
+  <data name="FirstRunServerLabel" xml:space="preserve">
+    <value>1. Сервер:</value>
+  </data>
+  <data name="FirstRunComputerLabel" xml:space="preserve">
+    <value>2. Этот компьютер:</value>
+  </data>
+  <data name="TrayOpen" xml:space="preserve">
+    <value>Открыть</value>
+  </data>
+  <data name="TraySettings" xml:space="preserve">
+    <value>Настройки</value>
+  </data>
+  <data name="TrayAlwaysOnTop" xml:space="preserve">
+    <value>Поверх всех окон</value>
+  </data>
+  <data name="TrayExit" xml:space="preserve">
+    <value>Выход</value>
+  </data>
+  <data name="TrayUpdateAvailableFormat" xml:space="preserve">
+    <value>Доступно обновление v{0}</value>
+  </data>
+  <data name="TrayTooltip" xml:space="preserve">
+    <value>Project Status</value>
+  </data>
+  <data name="TrayTooltipUpdate" xml:space="preserve">
+    <value>Project Status — доступно обновление</value>
+  </data>
+  <data name="UpdateTitle" xml:space="preserve">
+    <value>Обновление Project Status</value>
+  </data>
+  <data name="UpdateAvailableFormat" xml:space="preserve">
+    <value>Доступна версия {0}.</value>
+  </data>
+  <data name="ButtonUpdateNow" xml:space="preserve">
+    <value>Обновить сейчас</value>
+  </data>
+  <data name="ButtonLater" xml:space="preserve">
+    <value>Позже</value>
+  </data>
+  <data name="UpdateDownloading" xml:space="preserve">
+    <value>Загрузка обновления...</value>
+  </data>
+  <data name="UpdateNoInstaller" xml:space="preserve">
+    <value>В этом релизе нет установщика для автообновления. Откройте страницу релиза через меню трея.</value>
+  </data>
+  <data name="UpdateDownloadFailedFormat" xml:space="preserve">
+    <value>Не удалось загрузить обновление: {0}</value>
+  </data>
+  <data name="UpdateVerificationFailed" xml:space="preserve">
+    <value>Проверка обновления не удалась.</value>
+  </data>
+  <data name="UpdateVerificationFailedFormat" xml:space="preserve">
+    <value>Проверка обновления не удалась: {0}</value>
+  </data>
+  <data name="UpdateLaunchFailedFormat" xml:space="preserve">
+    <value>Не удалось запустить установщик: {0}</value>
+  </data>
+  <data name="DownloadTrustedHostRequired" xml:space="preserve">
+    <value>Файл обновления должен загружаться только с доверенного хоста релизов.</value>
+  </data>
+  <data name="DownloadMissingFileName" xml:space="preserve">
+    <value>У загружаемого обновления нет имени файла.</value>
+  </data>
+  <data name="ChecksumTrustedHostRequired" xml:space="preserve">
+    <value>Контрольная сумма должна загружаться только с доверенного хоста релизов.</value>
+  </data>
+</root>

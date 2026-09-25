@@ -6,7 +6,7 @@ Small self-hosted HTTP API for Project Status. It stores only the latest shared 
 
 The server stores:
 
-- projects: name, current status, current device, one-line note, updated timestamp;
+- projects: name, current status, current device, one-line note, hidden flag, updated timestamp;
 - configurable statuses and colors;
 - configurable devices.
 
@@ -17,6 +17,8 @@ There is no project history, user system, notifications, analytics, GitHub integ
 - `GET /health`
 - `GET /api/state` — one snapshot containing projects, statuses and devices
 - `POST|PUT|DELETE /api/projects`
+- `POST /api/projects/{id}/hide` — set `is_hidden=true` (hide is not delete)
+- `POST /api/projects/{id}/unhide` — set `is_hidden=false`
 - `POST|PUT|DELETE /api/statuses`
 - `POST|PUT|DELETE /api/devices`
 

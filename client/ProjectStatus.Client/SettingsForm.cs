@@ -7,15 +7,26 @@ internal sealed class SettingsForm : Form
     private readonly ComboBox _localDeviceCombo;
     private readonly CheckBox _alwaysOnTopCheck;
     private readonly CheckBox _autostartCheck;
+    private readonly ComboBox _languageCombo;
+    private readonly ListBox _projectsList;
     private readonly ListBox _statusesList;
     private readonly ListBox _devicesList;
+    private readonly CheckBox _showHiddenCheck;
+    private readonly Button _hideButton;
+    private List<ProjectDto> _allProjects = [];
+
+    // Built by BuildAppearanceTab, which runs from the constructor.
+    private TrackBar _opacityTrack = null!;
+    private Label _opacityHint = null!;
+    private Panel _backgroundPreview = null!;
+    private Color _pendingBackground;
     private readonly Label _connectionLabel;
 
     public SettingsForm(AppSettings settings, StateSnapshot state)
     {
         _settings = settings;
 
-        Text = "Project Status — Settings";
+        Text = Strings.AppTitleSettings;
         StartPosition = FormStartPosition.CenterParent;
         MinimumSize = new Size(520, 500);
         Size = new Size(560, 560);
@@ -38,11 +49,11 @@ internal sealed class SettingsForm : Form
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
-        root.Controls.Add(new Label { Text = "Server:", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 0);
+        root.Controls.Add(new Label { Text = Strings.LabelServer, AutoSize = true, Anchor = AnchorStyles.Left }, 0, 0);
         _serverText = new TextBox { Dock = DockStyle.Fill, Text = settings.ServerAddress };
         root.Controls.Add(_serverText, 1, 0);
 
-        root.Controls.Add(new Label { Text = "This computer:", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 1);
+        root.Controls.Add(new Label { Text = Strings.LabelThisComputer, AutoSize = true, Anchor = AnchorStyles.Left }, 0, 1);
         _localDeviceCombo = new ComboBox
         {
             Dock = DockStyle.Fill,
@@ -62,10 +73,31 @@ internal sealed class SettingsForm : Form
             FlowDirection = FlowDirection.LeftToRight,
             WrapContents = true
         };
-        _alwaysOnTopCheck = new CheckBox { Text = "Always on top", Checked = settings.AlwaysOnTop, AutoSize = true };
-        _autostartCheck = new CheckBox { Text = "Start with Windows", Checked = settings.StartWithWindows, AutoSize = true };
+        _alwaysOnTopCheck = new CheckBox { Text = Strings.OptionAlwaysOnTop, Checked = settings.AlwaysOnTop, AutoSize = true };
+        _autostartCheck = new CheckBox { Text = Strings.OptionStartWithWindows, Checked = settings.StartWithWindows, AutoSize = true };
         options.Controls.Add(_alwaysOnTopCheck);
         options.Controls.Add(_autostartCheck);
+
+        options.Controls.Add(new Label
+        {
+            Text = Strings.LabelLanguage,
+            AutoSize = true,
+            Anchor = AnchorStyles.Left,
+            Padding = new Padding(12, 7, 0, 0)
+        });
+        _languageCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 150 };
+        _languageCombo.Items.AddRange(
+            new object[]
+            {
+                new LanguageChoice(LanguagePreference.Auto, Strings.LanguageAuto),
+                new LanguageChoice(LanguagePreference.Russian, Strings.LanguageRussian),
+                new LanguageChoice(LanguagePreference.English, Strings.LanguageEnglish)
+            });
+        _languageCombo.DisplayMember = nameof(LanguageChoice.Label);
+        _languageCombo.SelectedItem = _languageCombo.Items
+            .OfType<LanguageChoice>()
+            .First(choice => choice.Preference == Localization.FromStoredValue(settings.Language));
+        options.Controls.Add(_languageCombo);
         root.Controls.Add(options, 1, 2);
 
         var connectionPanel = new FlowLayoutPanel
@@ -74,7 +106,7 @@ internal sealed class SettingsForm : Form
             AutoSize = true,
             FlowDirection = FlowDirection.LeftToRight
         };
-        var testButton = new Button { Text = "Test connection", AutoSize = true };
+        var testButton = new Button { Text = Strings.ButtonTestConnection, AutoSize = true };
         testButton.Click += async (_, _) => await TestConnectionAsync();
         _connectionLabel = new Label { AutoSize = true, Anchor = AnchorStyles.Left, Padding = new Padding(4, 7, 0, 0) };
         connectionPanel.Controls.Add(testButton);
@@ -82,6 +114,24 @@ internal sealed class SettingsForm : Form
         root.Controls.Add(connectionPanel, 1, 3);
 
         var tabs = new TabControl { Dock = DockStyle.Fill };
+        _projectsList = new ListBox
+        {
+            Dock = DockStyle.Fill,
+            DrawMode = DrawMode.OwnerDrawFixed,
+            ItemHeight = Math.Max(18, Font.Height + 6)
+        };
+        _projectsList.DrawItem += DrawProjectItem;
+        _projectsList.SelectedIndexChanged += (_, _) => UpdateHideButton();
+        // Off by default: hidden projects stay out of the way until requested.
+        _showHiddenCheck = new CheckBox
+        {
+            Text = Strings.OptionShowHiddenProjects,
+            Checked = false,
+            AutoSize = true,
+            Dock = DockStyle.Fill
+        };
+        _showHiddenCheck.CheckedChanged += (_, _) => ApplyProjectsFilter();
+        _hideButton = ActionButton(Strings.ButtonHide, async () => await ToggleProjectHiddenAsync());
         _statusesList = new ListBox
         {
             Dock = DockStyle.Fill,
@@ -90,8 +140,10 @@ internal sealed class SettingsForm : Form
         };
         _statusesList.DrawItem += DrawStatusItem;
         _devicesList = new ListBox { Dock = DockStyle.Fill };
+        tabs.TabPages.Add(BuildProjectsTab());
         tabs.TabPages.Add(BuildStatusesTab());
         tabs.TabPages.Add(BuildDevicesTab());
+        tabs.TabPages.Add(BuildAppearanceTab());
         root.Controls.Add(tabs, 0, 4);
         root.SetColumnSpan(tabs, 2);
 
@@ -101,9 +153,9 @@ internal sealed class SettingsForm : Form
             AutoSize = true,
             FlowDirection = FlowDirection.RightToLeft
         };
-        var saveButton = new Button { Text = "Save", DialogResult = DialogResult.None, AutoSize = true };
+        var saveButton = new Button { Text = Strings.ButtonSave, DialogResult = DialogResult.None, AutoSize = true };
         saveButton.Click += (_, _) => SaveAndClose();
-        var cancelButton = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, AutoSize = true };
+        var cancelButton = new Button { Text = Strings.ButtonCancel, DialogResult = DialogResult.Cancel, AutoSize = true };
         buttons.Controls.Add(saveButton);
         buttons.Controls.Add(cancelButton);
         root.Controls.Add(buttons, 0, 5);
@@ -116,9 +168,128 @@ internal sealed class SettingsForm : Form
         Shown += async (_, _) => await ReloadSharedAsync(showError: false);
     }
 
+    private TabPage BuildAppearanceTab()
+    {
+        var page = new TabPage(Strings.TabAppearance);
+        var layout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            RowCount = 5,
+            Padding = new Padding(10)
+        };
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        for (var row = 0; row < 4; row++)
+        {
+            layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        }
+
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
+        layout.Controls.Add(new Label { Text = Strings.LabelCompactOpacity, AutoSize = true, Anchor = AnchorStyles.Left }, 0, 0);
+
+        _opacityTrack = new TrackBar
+        {
+            Dock = DockStyle.Fill,
+            Minimum = AppearanceSettings.MinimumOpacityPercent,
+            Maximum = AppearanceSettings.MaximumOpacityPercent,
+            TickFrequency = 5,
+            SmallChange = 5,
+            LargeChange = 10,
+            Value = AppearanceSettings.NormalizeOpacityPercent(_settings.CompactOpacity)
+        };
+        _opacityTrack.ValueChanged += (_, _) => UpdateOpacityHint();
+        layout.Controls.Add(_opacityTrack, 1, 0);
+
+        _opacityHint = new Label { AutoSize = true, Anchor = AnchorStyles.Left, ForeColor = SystemColors.GrayText };
+        layout.Controls.Add(_opacityHint, 1, 1);
+
+        layout.Controls.Add(new Label { Text = Strings.LabelBackground, AutoSize = true, Anchor = AnchorStyles.Left }, 0, 2);
+
+        var backgroundPanel = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true };
+        _backgroundPreview = new Panel { Size = new Size(30, 22), BorderStyle = BorderStyle.FixedSingle };
+        var chooseButton = new Button { Text = Strings.ButtonChooseColor, AutoSize = true };
+        chooseButton.Click += (_, _) => ChooseBackgroundColor();
+        var defaultButton = new Button { Text = Strings.ButtonUseDefault, AutoSize = true };
+        defaultButton.Click += (_, _) => SetPendingBackground(Color.Empty);
+        backgroundPanel.Controls.Add(_backgroundPreview);
+        backgroundPanel.Controls.Add(chooseButton);
+        backgroundPanel.Controls.Add(defaultButton);
+        layout.Controls.Add(backgroundPanel, 1, 2);
+
+        var resetButton = new Button { Text = Strings.ButtonResetAppearance, AutoSize = true };
+        resetButton.Click += (_, _) => ResetAppearance();
+        layout.Controls.Add(resetButton, 1, 3);
+
+        SetPendingBackground(AppearanceSettings.ParseBackgroundColor(_settings.BackgroundColor));
+        UpdateOpacityHint();
+
+        page.Controls.Add(layout);
+        return page;
+    }
+
+    private void UpdateOpacityHint()
+    {
+        _opacityHint.Text = Strings.CompactOpacityHintFormat(_opacityTrack.Value);
+    }
+
+    private void SetPendingBackground(Color color)
+    {
+        _pendingBackground = color;
+        _backgroundPreview.BackColor = color.IsEmpty ? SystemColors.Control : color;
+    }
+
+    private void ChooseBackgroundColor()
+    {
+        using var dialog = new ColorDialog
+        {
+            FullOpen = true,
+            Color = _pendingBackground.IsEmpty ? SystemColors.Control : _pendingBackground
+        };
+
+        if (dialog.ShowDialog(this) == DialogResult.OK)
+        {
+            SetPendingBackground(dialog.Color);
+        }
+    }
+
+    // Values are written when Save is pressed, like the rest of the settings.
+    private void ResetAppearance()
+    {
+        _opacityTrack.Value = AppearanceSettings.DefaultOpacityPercent;
+        SetPendingBackground(Color.Empty);
+    }
+
+    private TabPage BuildProjectsTab()
+    {
+        var page = new TabPage(Strings.TabProjects);
+        var layout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 3,
+            Padding = new Padding(6)
+        };
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        layout.Controls.Add(_projectsList, 0, 0);
+        layout.Controls.Add(_showHiddenCheck, 0, 1);
+
+        var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true };
+        buttons.Controls.Add(ActionButton(Strings.ButtonAdd, async () => await AddProjectAsync()));
+        buttons.Controls.Add(ActionButton(Strings.ButtonRename, async () => await RenameProjectAsync()));
+        buttons.Controls.Add(_hideButton);
+        buttons.Controls.Add(ActionButton(Strings.ButtonDelete, async () => await DeleteProjectAsync()));
+        layout.Controls.Add(buttons, 0, 2);
+        page.Controls.Add(layout);
+        return page;
+    }
+
     private TabPage BuildStatusesTab()
     {
-        var page = new TabPage("Statuses");
+        var page = new TabPage(Strings.TabStatuses);
         var layout = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
@@ -131,10 +302,10 @@ internal sealed class SettingsForm : Form
         layout.Controls.Add(_statusesList, 0, 0);
 
         var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true };
-        buttons.Controls.Add(ActionButton("Add", async () => await AddStatusAsync()));
-        buttons.Controls.Add(ActionButton("Rename", async () => await RenameStatusAsync()));
-        buttons.Controls.Add(ActionButton("Color", async () => await ChangeStatusColorAsync()));
-        buttons.Controls.Add(ActionButton("Delete", async () => await DeleteStatusAsync()));
+        buttons.Controls.Add(ActionButton(Strings.ButtonAdd, async () => await AddStatusAsync()));
+        buttons.Controls.Add(ActionButton(Strings.ButtonRename, async () => await RenameStatusAsync()));
+        buttons.Controls.Add(ActionButton(Strings.ButtonColor, async () => await ChangeStatusColorAsync()));
+        buttons.Controls.Add(ActionButton(Strings.ButtonDelete, async () => await DeleteStatusAsync()));
         layout.Controls.Add(buttons, 0, 1);
         page.Controls.Add(layout);
         return page;
@@ -142,7 +313,7 @@ internal sealed class SettingsForm : Form
 
     private TabPage BuildDevicesTab()
     {
-        var page = new TabPage("Devices");
+        var page = new TabPage(Strings.TabDevices);
         var layout = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
@@ -155,9 +326,9 @@ internal sealed class SettingsForm : Form
         layout.Controls.Add(_devicesList, 0, 0);
 
         var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true };
-        buttons.Controls.Add(ActionButton("Add", async () => await AddDeviceAsync()));
-        buttons.Controls.Add(ActionButton("Rename", async () => await RenameDeviceAsync()));
-        buttons.Controls.Add(ActionButton("Delete", async () => await DeleteDeviceAsync()));
+        buttons.Controls.Add(ActionButton(Strings.ButtonAdd, async () => await AddDeviceAsync()));
+        buttons.Controls.Add(ActionButton(Strings.ButtonRename, async () => await RenameDeviceAsync()));
+        buttons.Controls.Add(ActionButton(Strings.ButtonDelete, async () => await DeleteDeviceAsync()));
         layout.Controls.Add(buttons, 0, 1);
         page.Controls.Add(layout);
         return page;
@@ -176,12 +347,12 @@ internal sealed class SettingsForm : Form
         {
             using var api = CreateApiFromField();
             await api.GetStateAsync();
-            _connectionLabel.Text = "OK";
+            _connectionLabel.Text = Strings.TestOk;
             _connectionLabel.ForeColor = Color.DarkGreen;
         }
         catch (Exception ex)
         {
-            _connectionLabel.Text = "Failed";
+            _connectionLabel.Text = Strings.TestFailed;
             _connectionLabel.ForeColor = Color.Firebrick;
             ShowError(ex.Message);
         }
@@ -195,6 +366,15 @@ internal sealed class SettingsForm : Form
             var state = await api.GetStateAsync();
 
             var localText = _localDeviceCombo.Text;
+            var selectedId = (_projectsList.SelectedItem as ProjectDto)?.Id;
+
+            // The full list is kept so the "show hidden" checkbox is a view filter only:
+            // hidden projects remain accessible here even while the main window hides them.
+            _allProjects = state.Projects
+                .OrderBy(project => project.Name, StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+            ApplyProjectsFilter(selectedId);
+
             _statusesList.Items.Clear();
             foreach (var status in state.Statuses)
             {
@@ -219,9 +399,191 @@ internal sealed class SettingsForm : Form
         }
     }
 
+    private void ApplyProjectsFilter(int? selectedId = null)
+    {
+        if (_projectsList.IsDisposed)
+        {
+            return;
+        }
+
+        selectedId ??= (_projectsList.SelectedItem as ProjectDto)?.Id;
+
+        _projectsList.BeginUpdate();
+        try
+        {
+            _projectsList.Items.Clear();
+            foreach (var project in ProjectVisibility.ForSettings(_allProjects, _showHiddenCheck.Checked))
+            {
+                _projectsList.Items.Add(project);
+            }
+
+            if (selectedId is int id)
+            {
+                foreach (var item in _projectsList.Items.OfType<ProjectDto>())
+                {
+                    if (item.Id == id)
+                    {
+                        _projectsList.SelectedItem = item;
+                        break;
+                    }
+                }
+            }
+        }
+        finally
+        {
+            _projectsList.EndUpdate();
+        }
+
+        UpdateHideButton();
+    }
+
+    private void UpdateHideButton()
+    {
+        if (_hideButton.IsDisposed)
+        {
+            return;
+        }
+
+        var selected = _projectsList.SelectedItem as ProjectDto;
+        _hideButton.Enabled = selected is not null;
+        _hideButton.Text = selected is not null && selected.IsHidden
+            ? Strings.ButtonShow
+            : Strings.ButtonHide;
+    }
+
+    // Hidden items are drawn with a localized suffix and grayed out, so Hide stays
+    // visually distinct from Delete. Items stay ProjectDto: the buttons above rely on
+    // SelectedItem being the project itself.
+    private static void DrawProjectItem(object? sender, DrawItemEventArgs e)
+    {
+        if (sender is not ListBox list || e.Index < 0 || e.Index >= list.Items.Count)
+        {
+            return;
+        }
+
+        if (list.Items[e.Index] is not ProjectDto project)
+        {
+            return;
+        }
+
+        var selected = (e.State & DrawItemState.Selected) == DrawItemState.Selected;
+        using (var background = new SolidBrush(selected ? SystemColors.Highlight : list.BackColor))
+        {
+            e.Graphics.FillRectangle(background, e.Bounds);
+        }
+
+        var text = ProjectVisibility.DisplayName(project);
+        var color = selected
+            ? SystemColors.HighlightText
+            : project.IsHidden ? SystemColors.GrayText : list.ForeColor;
+
+        TextRenderer.DrawText(
+            e.Graphics,
+            text,
+            list.Font,
+            e.Bounds,
+            color,
+            TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+
+        e.DrawFocusRectangle();
+    }
+
+    private async Task ToggleProjectHiddenAsync()
+    {
+        if (_projectsList.SelectedItem is not ProjectDto selected)
+        {
+            return;
+        }
+
+        await RunSharedMutationAsync(api => api.SetProjectHiddenAsync(selected.Id, !selected.IsHidden));
+    }
+
+    // Project lifecycle moved here from the main window: the grid no longer creates, renames or
+    // deletes projects. Every operation re-reads the shared state afterwards, so a rejected call
+    // never leaves the dialog showing something the server did not accept.
+    private async Task AddProjectAsync()
+    {
+        var name = PromptDialog.Show(this, Strings.PromptAddProjectTitle, Strings.PromptProjectName);
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return;
+        }
+
+        await RunSharedMutationAsync(api => api.CreateProjectAsync(new ProjectPayload
+        {
+            Name = name.Trim(),
+            StatusId = FindPausedStatusId(),
+            DeviceId = null,
+            Note = string.Empty
+        }));
+    }
+
+    private async Task RenameProjectAsync()
+    {
+        if (_projectsList.SelectedItem is not ProjectDto selected)
+        {
+            return;
+        }
+
+        var name = PromptDialog.Show(this, Strings.PromptRenameProjectTitle, Strings.PromptProjectName, selected.Name);
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return;
+        }
+
+        await RunSharedMutationAsync(async api =>
+        {
+            // The list in this dialog can be seconds old and another client may have changed the
+            // project since it was read. Only the name is taken from the dialog; status, device,
+            // note and the hidden flag are taken from the freshly read state, so a rename cannot
+            // put stale values back or accidentally unhide the project.
+            var state = await api.GetStateAsync();
+            var current = state.Projects.FirstOrDefault(project => project.Id == selected.Id);
+            if (current is null)
+            {
+                throw new ApiException(Strings.ErrorProjectGone);
+            }
+
+            return await api.UpdateProjectAsync(
+                current.Id, ProjectVisibility.WithName(current, name.Trim()));
+        });
+    }
+
+    private async Task DeleteProjectAsync()
+    {
+        if (_projectsList.SelectedItem is not ProjectDto project)
+        {
+            return;
+        }
+
+        if (MessageBox.Show(this, Strings.ConfirmDeleteProjectFormat(project.Name), Strings.AppTitle,
+                MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) != DialogResult.Yes)
+        {
+            return;
+        }
+
+        await RunSharedMutationAsync(async api =>
+        {
+            await api.DeleteProjectAsync(project.Id);
+            return project;
+        });
+    }
+
+    // A new project starts in the "Paused" stage when the server has one, which keeps the previous
+    // main-window behaviour after the button moved here.
+    private int? FindPausedStatusId()
+    {
+        return _statusesList.Items
+            .OfType<StatusDto>()
+            .FirstOrDefault(status =>
+                string.Equals(status.Name, "Paused", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(status.Name, "На паузе", StringComparison.OrdinalIgnoreCase))
+            ?.Id;
+    }
+
     private async Task AddStatusAsync()
     {
-        var name = PromptDialog.Show(this, "Add status", "Status name:");
+        var name = PromptDialog.Show(this, Strings.PromptAddStatusTitle, Strings.PromptStatusName);
         if (string.IsNullOrWhiteSpace(name))
         {
             return;
@@ -247,7 +609,7 @@ internal sealed class SettingsForm : Form
             return;
         }
 
-        var name = PromptDialog.Show(this, "Rename status", "Status name:", status.Name);
+        var name = PromptDialog.Show(this, Strings.PromptRenameStatusTitle, Strings.PromptStatusName, status.Name);
         if (string.IsNullOrWhiteSpace(name))
         {
             return;
@@ -296,7 +658,7 @@ internal sealed class SettingsForm : Form
             return;
         }
 
-        if (MessageBox.Show(this, $"Delete status '{status.Name}'?", "Project Status",
+        if (MessageBox.Show(this, Strings.ConfirmDeleteStatusFormat(status.Name), Strings.AppTitle,
                 MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) != DialogResult.Yes)
         {
             return;
@@ -311,7 +673,7 @@ internal sealed class SettingsForm : Form
 
     private async Task AddDeviceAsync()
     {
-        var name = PromptDialog.Show(this, "Add device", "Device name:");
+        var name = PromptDialog.Show(this, Strings.PromptAddDeviceTitle, Strings.PromptDeviceName);
         if (string.IsNullOrWhiteSpace(name))
         {
             return;
@@ -327,7 +689,7 @@ internal sealed class SettingsForm : Form
             return;
         }
 
-        var name = PromptDialog.Show(this, "Rename device", "Device name:", device.Name);
+        var name = PromptDialog.Show(this, Strings.PromptRenameDeviceTitle, Strings.PromptDeviceName, device.Name);
         if (string.IsNullOrWhiteSpace(name))
         {
             return;
@@ -343,7 +705,7 @@ internal sealed class SettingsForm : Form
             return;
         }
 
-        if (MessageBox.Show(this, $"Delete device '{device.Name}'?", "Project Status",
+        if (MessageBox.Show(this, Strings.ConfirmDeleteDeviceFormat(device.Name), Strings.AppTitle,
                 MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) != DialogResult.Yes)
         {
             return;
@@ -384,18 +746,27 @@ internal sealed class SettingsForm : Form
             var device = _localDeviceCombo.Text.Trim();
             if (string.IsNullOrWhiteSpace(device))
             {
-                throw new ArgumentException("This computer name is required.");
+                throw new ArgumentException(Strings.ErrorComputerNameRequired);
             }
 
             if (device.Length > 100)
             {
-                throw new ArgumentException("Computer name must be at most 100 characters.");
+                throw new ArgumentException(Strings.ErrorComputerNameTooLong);
             }
 
             _settings.ServerAddress = server;
             _settings.LocalDeviceName = device;
             _settings.AlwaysOnTop = _alwaysOnTopCheck.Checked;
             _settings.StartWithWindows = _autostartCheck.Checked;
+
+            if (_languageCombo.SelectedItem is LanguageChoice language)
+            {
+                _settings.Language = Localization.ToStoredValue(language.Preference);
+            }
+            _settings.CompactOpacity = AppearanceSettings.NormalizeOpacityPercent(_opacityTrack.Value);
+            _settings.BackgroundColor = _pendingBackground.IsEmpty
+                ? AppearanceSettings.DefaultBackgroundColor
+                : AppearanceSettings.ToHex(_pendingBackground);
             AppSettingsStore.Save(_settings);
 
             DialogResult = DialogResult.OK;
@@ -476,9 +847,12 @@ internal sealed class SettingsForm : Form
 
     private static string ToHex(Color color) => $"#{color.R:X2}{color.G:X2}{color.B:X2}";
 
+    // One entry of the language selector. The label is what the user sees, the preference is stored.
+    private sealed record LanguageChoice(LanguagePreference Preference, string Label);
+
     private void ShowError(string message)
     {
-        MessageBox.Show(this, message, "Project Status", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        MessageBox.Show(this, message, Strings.AppTitle, MessageBoxButtons.OK, MessageBoxIcon.Error);
     }
 }
 
@@ -492,7 +866,7 @@ internal sealed class FirstRunForm : Form
     {
         _settings = settings;
 
-        Text = "Project Status — First run";
+        Text = Strings.AppTitleFirstRun;
         StartPosition = FormStartPosition.CenterScreen;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -511,17 +885,17 @@ internal sealed class FirstRunForm : Form
 
         var intro = new Label
         {
-            Text = "Two small settings are needed before Project Status can start.",
+            Text = Strings.FirstRunIntro,
             AutoSize = true
         };
         layout.Controls.Add(intro, 0, 0);
         layout.SetColumnSpan(intro, 2);
 
-        layout.Controls.Add(new Label { Text = "1. Server:", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 1);
+        layout.Controls.Add(new Label { Text = Strings.FirstRunServerLabel, AutoSize = true, Anchor = AnchorStyles.Left }, 0, 1);
         _serverText = new TextBox { Dock = DockStyle.Fill, Text = settings.ServerAddress };
         layout.Controls.Add(_serverText, 1, 1);
 
-        layout.Controls.Add(new Label { Text = "2. This computer:", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 2);
+        layout.Controls.Add(new Label { Text = Strings.FirstRunComputerLabel, AutoSize = true, Anchor = AnchorStyles.Left }, 0, 2);
         _deviceText = new TextBox { Dock = DockStyle.Fill, Text = settings.LocalDeviceName };
         layout.Controls.Add(_deviceText, 1, 2);
 
@@ -531,9 +905,9 @@ internal sealed class FirstRunForm : Form
             AutoSize = true,
             FlowDirection = FlowDirection.RightToLeft
         };
-        var continueButton = new Button { Text = "Continue", AutoSize = true };
+        var continueButton = new Button { Text = Strings.ButtonContinue, AutoSize = true };
         continueButton.Click += (_, _) => Save();
-        var cancelButton = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, AutoSize = true };
+        var cancelButton = new Button { Text = Strings.ButtonCancel, DialogResult = DialogResult.Cancel, AutoSize = true };
         buttons.Controls.Add(continueButton);
         buttons.Controls.Add(cancelButton);
         layout.Controls.Add(buttons, 0, 3);
@@ -552,12 +926,12 @@ internal sealed class FirstRunForm : Form
             var device = _deviceText.Text.Trim();
             if (string.IsNullOrWhiteSpace(device))
             {
-                throw new ArgumentException("Computer name is required.");
+                throw new ArgumentException(Strings.ErrorComputerNameRequired);
             }
 
             if (device.Length > 100)
             {
-                throw new ArgumentException("Computer name must be at most 100 characters.");
+                throw new ArgumentException(Strings.ErrorComputerNameTooLong);
             }
 
             _settings.ServerAddress = server;
@@ -567,7 +941,7 @@ internal sealed class FirstRunForm : Form
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, ex.Message, "Project Status", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            MessageBox.Show(this, ex.Message, Strings.AppTitle, MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 }
@@ -598,14 +972,14 @@ internal static class PromptDialog
 
         var ok = new Button
         {
-            Text = "OK",
+            Text = Strings.ButtonOk,
             DialogResult = DialogResult.OK,
             Location = new Point(222, 78),
             Width = 75
         };
         var cancel = new Button
         {
-            Text = "Cancel",
+            Text = Strings.ButtonCancel,
             DialogResult = DialogResult.Cancel,
             Location = new Point(303, 78),
             Width = 75

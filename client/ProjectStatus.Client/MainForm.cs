@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Runtime.InteropServices;
 using System.Text;
 
 namespace ProjectStatus.Client;
@@ -11,12 +12,21 @@ internal sealed class MainForm : Form
     private const string DeviceColumn = "device";
     private const string NoteColumn = "note";
     private const string UpdatedColumn = "updated";
+    private const string PinButtonName = "PinButton";
+    private const int WmNcLButtonDown = 0x00A1;
+    private const int HtCaption = 0x0002;
     private static readonly Color PinActiveBackColor = Color.FromArgb(0, 120, 215);
+    private static readonly Size FullMinimumSize = new(620, 260);
+    private static readonly Size CompactMinimumSize = new(200, 120);
 
     private readonly AppSettings _settings;
     private readonly ApiClient _api;
     private readonly DataGridView _grid;
     private readonly ToolStripButton _pinButton;
+    private readonly ToolStripButton _settingsButton;
+    private readonly ToolStripButton _modeButton;
+    private readonly ToolStrip _toolStrip;
+    private readonly StatusStrip _statusStrip;
     private readonly ToolStripStatusLabel _syncLabel;
     private readonly ToolStripStatusLabel _deviceLabel;
     private readonly System.Windows.Forms.Timer _pollTimer;
@@ -27,19 +37,24 @@ internal sealed class MainForm : Form
     private bool _binding;
     private bool _syncingPin;
     private bool _allowExit;
+    private bool _compact;
+    private bool _syncIsOk;
 
     public event EventHandler? AlwaysOnTopChanged;
+
+    // Raised after the interface language changed, so the tray menu can follow.
+    public event EventHandler? LocalizationChanged;
 
     public MainForm(AppSettings settings, ApiClient api)
     {
         _settings = settings;
         _api = api;
 
-        Text = "Project Status";
-        MinimumSize = new Size(620, 260);
+        Text = Strings.AppTitle;
         StartPosition = FormStartPosition.Manual;
         ShowInTaskbar = false;
         TopMost = settings.AlwaysOnTop;
+        _compact = settings.CompactMode;
         RestoreWindowBounds();
 
         var icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
@@ -48,7 +63,7 @@ internal sealed class MainForm : Form
             Icon = icon;
         }
 
-        var toolStrip = new ToolStrip
+        _toolStrip = new ToolStrip
         {
             GripStyle = ToolStripGripStyle.Hidden,
             Dock = DockStyle.Top,
@@ -57,22 +72,26 @@ internal sealed class MainForm : Form
 
         // The stock checked-state rendering is too subtle to show that Pin is on, so a checked
         // toolbar button is filled with an accent color instead.
-        toolStrip.Renderer = new PinCheckedRenderer();
+        _toolStrip.Renderer = new PinCheckedRenderer();
 
-        var addButton = new ToolStripButton("+ Project");
-        addButton.Click += async (_, _) => await AddProjectAsync();
+        // Project lifecycle lives in Settings now, so the toolbar only carries the mode switch,
+        // Settings and Pin.
+        _settingsButton = new ToolStripButton(Strings.ToolbarSettings);
+        _settingsButton.Click += async (_, _) => await ShowSettingsDialogAsync();
 
-        var deleteButton = new ToolStripButton("Delete");
-        deleteButton.Click += async (_, _) => await DeleteSelectedProjectAsync();
-
-        var settingsButton = new ToolStripButton("Settings");
-        settingsButton.Click += async (_, _) => await ShowSettingsDialogAsync();
-
-        _pinButton = new ToolStripButton("Pin")
+        _modeButton = new ToolStripButton(Strings.ToolbarCompact)
         {
+            ToolTipText = Strings.ToolbarCompactTooltip
+        };
+        _modeButton.Click += (_, _) => SetCompactMode(!_compact);
+
+        _pinButton = new ToolStripButton(Strings.ToolbarPin)
+        {
+            // Named, because the caption is translated and the button is looked up by identity.
+            Name = PinButtonName,
             CheckOnClick = true,
             Checked = settings.AlwaysOnTop,
-            ToolTipText = "Keep the window above other windows"
+            ToolTipText = Strings.ToolbarPinTooltipOff
         };
         _pinButton.CheckedChanged += (_, _) =>
         {
@@ -82,35 +101,44 @@ internal sealed class MainForm : Form
             }
         };
 
-        toolStrip.Items.Add(addButton);
-        toolStrip.Items.Add(deleteButton);
-        toolStrip.Items.Add(new ToolStripSeparator());
-        toolStrip.Items.Add(settingsButton);
-        toolStrip.Items.Add(_pinButton);
+        _toolStrip.Items.Add(_modeButton);
+        _toolStrip.Items.Add(_settingsButton);
+        _toolStrip.Items.Add(_pinButton);
 
         // Toolbar actions run against the row the user was working in, so a pending text edit is
         // committed on mouse down and the caret is parked on that same row.
-        foreach (var button in new[] { addButton, deleteButton, settingsButton })
+        _settingsButton.MouseDown += (_, _) => CommitPendingGridEdit();
+        _modeButton.MouseDown += (_, _) => CommitPendingGridEdit();
+
+        // In compact mode the empty part of the toolbar works as a window handle too.
+        _toolStrip.MouseDown += (_, e) =>
         {
-            button.MouseDown += (_, _) => CommitPendingGridEdit();
-        }
+            if (_compact && _toolStrip.GetItemAt(e.X, e.Y) is null)
+            {
+                BeginWindowDrag();
+            }
+        };
 
         UpdatePinVisual(settings.AlwaysOnTop);
 
         _grid = BuildGrid();
         _grid.Dock = DockStyle.Fill;
 
-        var statusStrip = new StatusStrip();
-        _syncLabel = new ToolStripStatusLabel("No connection");
+        _statusStrip = new StatusStrip();
+        _syncLabel = new ToolStripStatusLabel(Strings.SyncNoConnection);
         var spring = new ToolStripStatusLabel { Spring = true };
-        _deviceLabel = new ToolStripStatusLabel($"This PC: {settings.LocalDeviceName}");
-        statusStrip.Items.Add(_syncLabel);
-        statusStrip.Items.Add(spring);
-        statusStrip.Items.Add(_deviceLabel);
+        _deviceLabel = new ToolStripStatusLabel(Strings.DeviceLabelFormat(settings.LocalDeviceName));
+        _statusStrip.Items.Add(_syncLabel);
+        _statusStrip.Items.Add(spring);
+        _statusStrip.Items.Add(_deviceLabel);
 
         Controls.Add(_grid);
-        Controls.Add(toolStrip);
-        Controls.Add(statusStrip);
+        Controls.Add(_toolStrip);
+        Controls.Add(_statusStrip);
+
+        ApplyModeLayout();
+        ApplyAppearance();
+        ApplyLocalization();
 
         _pollTimer = new System.Windows.Forms.Timer { Interval = PollIntervalMs };
         _pollTimer.Tick += async (_, _) => await RefreshStateAsync(force: false);
@@ -148,6 +176,8 @@ internal sealed class MainForm : Form
 
         Activate();
         BringToFront();
+
+        SetMainWindowVisible(true);
     }
 
     public void HideToTray()
@@ -155,6 +185,21 @@ internal sealed class MainForm : Form
         CaptureWindowSettings();
         Hide();
         ShowInTaskbar = false;
+
+        SetMainWindowVisible(false);
+    }
+
+    // The --startup launch restores this, so the window comes back the way the user left it: open
+    // when it was open, hidden in the tray when it was hidden.
+    private void SetMainWindowVisible(bool visible)
+    {
+        if (_settings.MainWindowVisible == visible)
+        {
+            return;
+        }
+
+        _settings.MainWindowVisible = visible;
+        AppSettingsStore.Save(_settings);
     }
 
     public void SetAlwaysOnTop(bool value)
@@ -185,11 +230,28 @@ internal sealed class MainForm : Form
             return;
         }
 
-        _settings.WindowX = bounds.X;
-        _settings.WindowY = bounds.Y;
-        _settings.WindowWidth = Math.Max(MinimumSize.Width, bounds.Width);
-        _settings.WindowHeight = Math.Max(MinimumSize.Height, bounds.Height);
+        var minimum = _compact ? CompactMinimumSize : FullMinimumSize;
+        var width = Math.Max(minimum.Width, bounds.Width);
+        var height = Math.Max(minimum.Height, bounds.Height);
+
+        // Full and Compact keep their own geometry, so switching modes does not move the other one.
+        if (_compact)
+        {
+            _settings.CompactWindowX = bounds.X;
+            _settings.CompactWindowY = bounds.Y;
+            _settings.CompactWindowWidth = width;
+            _settings.CompactWindowHeight = height;
+        }
+        else
+        {
+            _settings.WindowX = bounds.X;
+            _settings.WindowY = bounds.Y;
+            _settings.WindowWidth = width;
+            _settings.WindowHeight = height;
+        }
+
         _settings.AlwaysOnTop = TopMost;
+        _settings.MainWindowVisible = Visible;
         AppSettingsStore.Save(_settings);
     }
 
@@ -215,8 +277,15 @@ internal sealed class MainForm : Form
             _settings.ServerAddress = AppSettings.NormalizeServerAddress(_settings.ServerAddress);
             _api.SetServerAddress(_settings.ServerAddress);
             AutostartManager.Apply(_settings.StartWithWindows);
-            _deviceLabel.Text = $"This PC: {_settings.LocalDeviceName}";
+            _deviceLabel.Text = Strings.DeviceLabelFormat(_settings.LocalDeviceName);
             SetAlwaysOnTop(_settings.AlwaysOnTop);
+            ApplyAppearance();
+
+            // A language change applies straight away to this window and the tray menu; the Settings
+            // dialog itself picks it up the next time it is opened.
+            Localization.Apply(_settings.Language);
+            ApplyLocalization();
+            LocalizationChanged?.Invoke(this, EventArgs.Empty);
             _stateSignature = string.Empty;
 
             // Settings edits statuses and devices on the server. The main form has to show them when
@@ -250,7 +319,98 @@ internal sealed class MainForm : Form
             return;
         }
 
-        _grid.CurrentCell = row.Cells[UpdatedColumn];
+        // Compact hides the Updated column and the current cell cannot sit in a hidden column, so
+        // the read-only Project cell is the parking spot there.
+        _grid.CurrentCell = row.Cells[_compact ? NameColumn : UpdatedColumn];
+    }
+
+    public bool IsCompact => _compact;
+
+    public void SetCompactMode(bool compact)
+    {
+        if (_compact == compact)
+        {
+            return;
+        }
+
+        // Store this mode's geometry before the layout changes, then bring the other one back.
+        CommitPendingGridEdit();
+        CaptureWindowSettings();
+
+        _compact = compact;
+        _settings.CompactMode = compact;
+        AppSettingsStore.Save(_settings);
+
+        ApplyModeLayout();
+        ApplyAppearance();
+        RestoreWindowBounds();
+    }
+
+    // One background colour for the ordinary surfaces, compact-only opacity, and text colour derived
+    // from the background so labels stay readable. Status cells keep the colours the server assigns.
+    private void ApplyAppearance()
+    {
+        var background = AppearanceSettings.ParseBackgroundColor(_settings.BackgroundColor);
+        var custom = !background.IsEmpty;
+
+        // Full mode is always fully opaque; the opacity setting belongs to Compact alone.
+        Opacity = _compact ? AppearanceSettings.ToOpacity(_settings.CompactOpacity) : 1.0;
+
+        var surface = custom ? background : SystemColors.Control;
+        var text = custom ? GetContrastingTextColor(background) : SystemColors.ControlText;
+
+        BackColor = surface;
+        ForeColor = text;
+
+        _toolStrip.BackColor = surface;
+        _toolStrip.ForeColor = text;
+
+        var gridBackground = custom ? background : SystemColors.Window;
+        _grid.BackgroundColor = gridBackground;
+        _grid.GridColor = custom ? ControlPaint.Dark(background) : SystemColors.ControlDark;
+        _grid.EnableHeadersVisualStyles = !custom;
+        _grid.DefaultCellStyle.BackColor = gridBackground;
+        _grid.DefaultCellStyle.ForeColor = custom ? text : SystemColors.WindowText;
+        _grid.DefaultCellStyle.SelectionBackColor = custom ? ControlPaint.Dark(background) : SystemColors.Highlight;
+        _grid.DefaultCellStyle.SelectionForeColor = custom ? text : SystemColors.HighlightText;
+        _grid.ColumnHeadersDefaultCellStyle.BackColor = surface;
+        _grid.ColumnHeadersDefaultCellStyle.ForeColor = text;
+        _grid.Invalidate();
+
+        _statusStrip.BackColor = surface;
+        _statusStrip.ForeColor = text;
+        foreach (ToolStripItem item in _statusStrip.Items)
+        {
+            item.ForeColor = text;
+        }
+
+        // The sync label carries a state colour of its own; recompute it for the new background.
+        ApplySyncLabel();
+    }
+
+    // Compact shows only the project and its status. Everything stays in the same window: no second
+    // form, no second window type and no new top-level window.
+    private void ApplyModeLayout()
+    {
+        // A maximized or snapped window would otherwise hand its geometry to the smaller layout.
+        if (WindowState != FormWindowState.Normal)
+        {
+            WindowState = FormWindowState.Normal;
+        }
+
+        _grid.Columns[DeviceColumn].Visible = !_compact;
+        _grid.Columns[NoteColumn].Visible = !_compact;
+        _grid.Columns[UpdatedColumn].Visible = !_compact;
+        _statusStrip.Visible = !_compact;
+        _settingsButton.Visible = !_compact;
+        _modeButton.Text = _compact ? Strings.ToolbarFull : Strings.ToolbarCompact;
+
+        // Windows edge snapping needs WS_MAXIMIZEBOX, so dropping it disables snapping for this
+        // window only. WS_THICKFRAME stays, which keeps the standard frame and manual resizing.
+        // Full restores the flag, so native snapping behaves as usual again.
+        MaximizeBox = !_compact;
+
+        MinimumSize = _compact ? CompactMinimumSize : FullMinimumSize;
     }
 
     private bool IsTextColumn(int columnIndex)
@@ -277,19 +437,20 @@ internal sealed class MainForm : Form
             SelectionMode = DataGridViewSelectionMode.CellSelect
         };
 
+        // Read-only: a project is renamed in Settings, never by typing into the grid.
         grid.Columns.Add(new DataGridViewTextBoxColumn
         {
             Name = NameColumn,
-            HeaderText = "Project",
+            HeaderText = Strings.ColumnProject,
             AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill,
             FillWeight = 24,
-            MaxInputLength = 100
+            ReadOnly = true
         });
 
         grid.Columns.Add(new DataGridViewComboBoxColumn
         {
             Name = StatusColumn,
-            HeaderText = "Status",
+            HeaderText = Strings.ColumnStatus,
             Width = 120,
             DisplayStyle = DataGridViewComboBoxDisplayStyle.DropDownButton,
             FlatStyle = FlatStyle.Flat
@@ -298,7 +459,7 @@ internal sealed class MainForm : Form
         grid.Columns.Add(new DataGridViewComboBoxColumn
         {
             Name = DeviceColumn,
-            HeaderText = "Device",
+            HeaderText = Strings.ColumnDevice,
             Width = 100,
             DisplayStyle = DataGridViewComboBoxDisplayStyle.DropDownButton,
             FlatStyle = FlatStyle.Flat
@@ -307,7 +468,7 @@ internal sealed class MainForm : Form
         grid.Columns.Add(new DataGridViewTextBoxColumn
         {
             Name = NoteColumn,
-            HeaderText = "Note",
+            HeaderText = Strings.ColumnNote,
             AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill,
             FillWeight = 38,
             MaxInputLength = 200
@@ -316,7 +477,7 @@ internal sealed class MainForm : Form
         grid.Columns.Add(new DataGridViewTextBoxColumn
         {
             Name = UpdatedColumn,
-            HeaderText = "Updated",
+            HeaderText = Strings.ColumnUpdated,
             Width = 115,
             ReadOnly = true
         });
@@ -396,12 +557,21 @@ internal sealed class MainForm : Form
         // Leaving the grid (toolbar, taskbar, another window) commits the pending edit as well.
         grid.Leave += (_, _) => CommitPendingGridEdit();
 
-        // A click on the empty area below the rows ends the edit like Enter does.
+        // A click on the empty area below the rows ends the edit like Enter does. In compact mode the
+        // empty area and the header strip also work as a window handle, because the small window
+        // leaves little else to grab for moving it.
         grid.MouseDown += (_, e) =>
         {
-            if (grid.HitTest(e.X, e.Y).Type == DataGridViewHitTestType.None)
+            var hit = grid.HitTest(e.X, e.Y);
+            if (hit.Type == DataGridViewHitTestType.None)
             {
                 CommitPendingGridEdit();
+            }
+
+            if (_compact &&
+                hit.Type is DataGridViewHitTestType.None or DataGridViewHitTestType.ColumnHeader)
+            {
+                BeginWindowDrag();
             }
         };
 
@@ -515,7 +685,9 @@ internal sealed class MainForm : Form
             deviceColumn.ValueType = typeof(string);
 
             _grid.Rows.Clear();
-            foreach (var project in _state.Projects)
+            // Hidden projects never take part in the main-grid binding, in Full and in Compact.
+            // They stay on the server and in Settings; the regular poll picks up hide/unhide.
+            foreach (var project in ProjectVisibility.VisibleOnly(_state.Projects))
             {
                 var rowIndex = _grid.Rows.Add(
                     project.Name,
@@ -557,54 +729,6 @@ internal sealed class MainForm : Form
         return result;
     }
 
-    private async Task AddProjectAsync()
-    {
-        var name = PromptDialog.Show(this, "New project", "Project name:");
-        if (string.IsNullOrWhiteSpace(name))
-        {
-            return;
-        }
-
-        var paused = _state.Statuses.FirstOrDefault(status =>
-            string.Equals(status.Name, "Paused", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(status.Name, "На паузе", StringComparison.OrdinalIgnoreCase));
-
-        await RunMutationAsync(async () =>
-        {
-            await _api.CreateProjectAsync(new ProjectPayload
-            {
-                Name = name.Trim(),
-                StatusId = paused?.Id,
-                DeviceId = null,
-                Note = string.Empty
-            });
-        });
-    }
-
-    private async Task DeleteSelectedProjectAsync()
-    {
-        var project = SelectedProject();
-        if (project is null)
-        {
-            return;
-        }
-
-        var result = MessageBox.Show(
-            this,
-            $"Delete project '{project.Name}'?",
-            "Project Status",
-            MessageBoxButtons.YesNo,
-            MessageBoxIcon.Warning,
-            MessageBoxDefaultButton.Button2);
-
-        if (result != DialogResult.Yes)
-        {
-            return;
-        }
-
-        await RunMutationAsync(() => _api.DeleteProjectAsync(project.Id));
-    }
-
     private ProjectDto? SelectedProject()
     {
         return _grid.CurrentCell?.OwningRow?.Tag as ProjectDto;
@@ -628,14 +752,14 @@ internal sealed class MainForm : Form
 
         if (string.IsNullOrWhiteSpace(name))
         {
-            ShowError("Project name cannot be blank.");
+            ShowError(Strings.ErrorProjectNameBlank);
             await RefreshStateAsync(force: true);
             return;
         }
 
         if (note.Length > 200 || note.Contains('\r') || note.Contains('\n'))
         {
-            ShowError("Note must be one line and at most 200 characters.");
+            ShowError(Strings.ErrorNoteInvalid);
             await RefreshStateAsync(force: true);
             return;
         }
@@ -657,6 +781,9 @@ internal sealed class MainForm : Form
         await _apiGate.WaitAsync();
         try
         {
+            // The grid never edits visibility: is_hidden is omitted so the server preserves
+            // its current value. Sending a stale flag back would unhide a project hidden by
+            // another client after this snapshot was read.
             var updated = await _api.UpdateProjectAsync(current.Id, new ProjectPayload
             {
                 Name = name,
@@ -683,29 +810,6 @@ internal sealed class MainForm : Form
         await RefreshStateAsync(force: true);
     }
 
-    private async Task RunMutationAsync(Func<Task> action)
-    {
-        await _apiGate.WaitAsync();
-        try
-        {
-            await action();
-            SetSyncOk();
-            _stateSignature = string.Empty;
-        }
-        catch (Exception ex)
-        {
-            SetSyncOfflineIfNetwork(ex);
-            ShowError(ex.Message);
-            return;
-        }
-        finally
-        {
-            _apiGate.Release();
-        }
-
-        await RefreshStateAsync(force: true);
-    }
-
     private static int? ParseNullableId(object? value)
     {
         var text = Convert.ToString(value, CultureInfo.InvariantCulture);
@@ -716,14 +820,25 @@ internal sealed class MainForm : Form
 
     private void SetSyncOk()
     {
-        _syncLabel.Text = "Sync: OK";
-        _syncLabel.ForeColor = Color.DarkGreen;
+        _syncIsOk = true;
+        ApplySyncLabel();
     }
 
     private void SetSyncOffline()
     {
-        _syncLabel.Text = "No connection";
-        _syncLabel.ForeColor = Color.Firebrick;
+        _syncIsOk = false;
+        ApplySyncLabel();
+    }
+
+    // The state colours are the readable pair for whichever background is in use.
+    private void ApplySyncLabel()
+    {
+        var custom = !AppearanceSettings.ParseBackgroundColor(_settings.BackgroundColor).IsEmpty;
+
+        _syncLabel.Text = _syncIsOk ? Strings.SyncOk : Strings.SyncNoConnection;
+        _syncLabel.ForeColor = _syncIsOk
+            ? (custom ? Color.FromArgb(126, 231, 135) : Color.DarkGreen)
+            : (custom ? Color.FromArgb(255, 138, 128) : Color.Firebrick);
     }
 
     private void SetSyncOfflineIfNetwork(Exception ex)
@@ -734,7 +849,11 @@ internal sealed class MainForm : Form
         }
     }
 
-    private static string FormatUpdated(string value)
+    // The month name follows the interface language, not the OS culture, so Apply("ru") renders
+    // Russian month names and Apply("en") renders English ones. Exposed for tests (see
+    // InternalsVisibleTo in the project file); parsing stays invariant because the server sends
+    // round-trip ISO timestamps.
+    internal static string FormatUpdated(string value)
     {
         if (!DateTimeOffset.TryParse(
                 value,
@@ -745,7 +864,7 @@ internal sealed class MainForm : Form
             return value;
         }
 
-        return parsed.ToLocalTime().ToString("dd MMM HH:mm", CultureInfo.CurrentCulture);
+        return parsed.ToLocalTime().ToString("dd MMM HH:mm", Localization.Culture);
     }
 
     private static string ComputeStateSignature(StateSnapshot state)
@@ -766,7 +885,8 @@ internal sealed class MainForm : Form
         {
             builder.Append("P:").Append(project.Id).Append(':').Append(project.Name).Append(':')
                 .Append(project.StatusId).Append(':').Append(project.DeviceId).Append(':')
-                .Append(project.Note).Append(':').Append(project.UpdatedAt).Append('|');
+                .Append(project.Note).Append(':').Append(project.IsHidden).Append(':')
+                .Append(project.UpdatedAt).Append('|');
         }
 
         return builder.ToString();
@@ -785,33 +905,72 @@ internal sealed class MainForm : Form
         _pinButton.BackColor = active ? PinActiveBackColor : Color.Empty;
         _pinButton.ForeColor = active ? Color.White : Color.Empty;
         _pinButton.ToolTipText = active
-            ? "Always on top is on"
-            : "Keep the window above other windows";
+            ? Strings.ToolbarPinTooltipOn
+            : Strings.ToolbarPinTooltipOff;
+    }
+
+    // Every user-visible caption of this window lives here, so the language can be changed without
+    // restarting the application.
+    public void ApplyLocalization()
+    {
+        Text = Strings.AppTitle;
+        _settingsButton.Text = Strings.ToolbarSettings;
+        _pinButton.Text = Strings.ToolbarPin;
+        _modeButton.Text = _compact ? Strings.ToolbarFull : Strings.ToolbarCompact;
+        _modeButton.ToolTipText = Strings.ToolbarCompactTooltip;
+        UpdatePinVisual(_pinButton.Checked);
+
+        _grid.Columns[NameColumn].HeaderText = Strings.ColumnProject;
+        _grid.Columns[StatusColumn].HeaderText = Strings.ColumnStatus;
+        _grid.Columns[DeviceColumn].HeaderText = Strings.ColumnDevice;
+        _grid.Columns[NoteColumn].HeaderText = Strings.ColumnNote;
+        _grid.Columns[UpdatedColumn].HeaderText = Strings.ColumnUpdated;
+
+        _deviceLabel.Text = Strings.DeviceLabelFormat(_settings.LocalDeviceName);
+        ApplySyncLabel();
+    }
+
+    [DllImport("user32.dll")]
+    private static extern bool ReleaseCapture();
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr SendMessage(IntPtr window, int message, IntPtr wParam, IntPtr lParam);
+
+    // Compact mode has almost no chrome left to grab, so a press on its empty surface is handed to
+    // the system's own caption drag. That keeps TopMost, the standard frame and the no-snap styles
+    // untouched.
+    private void BeginWindowDrag()
+    {
+        if (!_compact || !Visible)
+        {
+            return;
+        }
+
+        ReleaseCapture();
+        SendMessage(Handle, WmNcLButtonDown, HtCaption, IntPtr.Zero);
     }
 
     private void RestoreWindowBounds()
     {
-        var width = Math.Max(MinimumSize.Width, _settings.WindowWidth);
-        var height = Math.Max(MinimumSize.Height, _settings.WindowHeight);
+        var minimum = _compact ? CompactMinimumSize : FullMinimumSize;
+        MinimumSize = minimum;
 
-        if (_settings.WindowX is int x && _settings.WindowY is int y)
-        {
-            var desired = new Rectangle(x, y, width, height);
-            if (Screen.AllScreens.Any(screen => screen.WorkingArea.IntersectsWith(desired)))
-            {
-                Bounds = desired;
-                return;
-            }
-        }
+        var savedX = _compact ? _settings.CompactWindowX : _settings.WindowX;
+        var savedY = _compact ? _settings.CompactWindowY : _settings.WindowY;
+        var savedWidth = _compact ? _settings.CompactWindowWidth : _settings.WindowWidth;
+        var savedHeight = _compact ? _settings.CompactWindowHeight : _settings.WindowHeight;
 
-        var working = Screen.PrimaryScreen?.WorkingArea ?? new Rectangle(0, 0, 1280, 720);
-        width = Math.Min(width, working.Width);
-        height = Math.Min(height, working.Height);
-        Bounds = new Rectangle(
-            working.Right - width - 24,
-            working.Top + 24,
-            width,
-            height);
+        var primary = Screen.PrimaryScreen?.WorkingArea ?? new Rectangle(0, 0, 1280, 720);
+        var workingAreas = Screen.AllScreens.Select(screen => screen.WorkingArea).ToList();
+
+        Bounds = WindowBounds.Resolve(
+            savedX,
+            savedY,
+            savedWidth,
+            savedHeight,
+            minimum,
+            primary,
+            workingAreas);
     }
 
     private void OnFormClosing(object? sender, FormClosingEventArgs e)
@@ -831,7 +990,7 @@ internal sealed class MainForm : Form
 
     private void ShowError(string message)
     {
-        MessageBox.Show(this, message, "Project Status", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        MessageBox.Show(this, message, Strings.AppTitle, MessageBoxButtons.OK, MessageBoxIcon.Error);
     }
 
     private sealed record ChoiceItem(string Id, string Name);

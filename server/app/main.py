@@ -49,6 +49,9 @@ class ProjectInput(NamedModel):
     status_id: int | None = None
     device_id: int | None = None
     note: str = Field(default="", max_length=200)
+    # Optional so old clients that send only name/status/device/note keep working:
+    # None means "preserve the current flag" on update, False on create.
+    is_hidden: bool | None = None
 
     @field_validator("note")
     @classmethod
@@ -121,6 +124,7 @@ def create_project(payload: ProjectInput) -> dict:
         status_id=payload.status_id,
         device_id=payload.device_id,
         note=payload.note,
+        is_hidden=payload.is_hidden if payload.is_hidden is not None else False,
     )
 
 
@@ -133,7 +137,18 @@ def update_project(project_id: int, payload: ProjectInput) -> dict:
         status_id=payload.status_id,
         device_id=payload.device_id,
         note=payload.note,
+        is_hidden=payload.is_hidden,
     )
+
+
+@app.post("/api/projects/{project_id}/hide")
+def hide_project(project_id: int) -> dict:
+    return call_storage(get_storage().set_project_hidden, project_id, True)
+
+
+@app.post("/api/projects/{project_id}/unhide")
+def unhide_project(project_id: int) -> dict:
+    return call_storage(get_storage().set_project_hidden, project_id, False)
 
 
 @app.delete("/api/projects/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
