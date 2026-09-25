@@ -57,9 +57,11 @@ public class HideProjectTests
     }
 
     [Fact]
-    public void A_rename_payload_carries_the_current_flag()
+    public void A_rename_payload_omits_the_flag_so_the_server_preserves_it()
     {
-        var current = new ProjectDto
+        // A stale snapshot must never flip visibility: even when the locally known
+        // project is hidden, the rename carries no flag and the server keeps its own.
+        var hidden = new ProjectDto
         {
             Id = 5,
             Name = "Old",
@@ -68,24 +70,50 @@ public class HideProjectTests
             DeviceId = 3,
             IsHidden = true
         };
+        var visible = new ProjectDto
+        {
+            Id = 6,
+            Name = "Old",
+            Note = "kept",
+            StatusId = 2,
+            DeviceId = 3,
+            IsHidden = false
+        };
 
-        var payload = ProjectVisibility.WithName(current, "New");
+        foreach (var current in new[] { hidden, visible })
+        {
+            var payload = ProjectVisibility.WithName(current, "New");
 
-        Assert.Equal("New", payload.Name);
-        Assert.Equal(2, payload.StatusId);
-        Assert.Equal(3, payload.DeviceId);
-        Assert.Equal("kept", payload.Note);
-        Assert.True(payload.IsHidden);
+            Assert.Equal("New", payload.Name);
+            Assert.Equal(2, payload.StatusId);
+            Assert.Equal(3, payload.DeviceId);
+            Assert.Equal("kept", payload.Note);
+            Assert.Null(payload.IsHidden);
+            Assert.DoesNotContain(
+                "is_hidden",
+                JsonSerializer.Serialize(payload, JsonOptions),
+                StringComparison.OrdinalIgnoreCase);
+        }
     }
 
     [Fact]
-    public void An_unset_flag_is_omitted_so_the_server_preserves_it()
+    public void An_ordinary_update_payload_omits_the_flag()
     {
-        var payload = new ProjectPayload { Name = "Example" };
+        // Status/device/note edits from the main grid never touch visibility; only the
+        // dedicated hide/unhide endpoints change it.
+        var payload = new ProjectPayload
+        {
+            Name = "Example",
+            StatusId = 1,
+            DeviceId = 2,
+            Note = "note"
+        };
 
-        var json = JsonSerializer.Serialize(payload, JsonOptions);
-
-        Assert.DoesNotContain("is_hidden", json, StringComparison.OrdinalIgnoreCase);
+        Assert.Null(payload.IsHidden);
+        Assert.DoesNotContain(
+            "is_hidden",
+            JsonSerializer.Serialize(payload, JsonOptions),
+            StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

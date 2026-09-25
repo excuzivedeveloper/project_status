@@ -121,13 +121,15 @@ internal static class ProjectVisibility
 
     public static ProjectPayload WithName(ProjectDto current, string name)
     {
+        // Only the name is taken from the dialog; is_hidden stays null (omitted), so the
+        // server preserves its current value atomically. Carrying a possibly stale flag
+        // would unhide a project hidden by another client after this snapshot was read.
         return new ProjectPayload
         {
             Name = name,
             StatusId = current.StatusId,
             DeviceId = current.DeviceId,
-            Note = current.Note,
-            IsHidden = current.IsHidden
+            Note = current.Note
         };
     }
 }

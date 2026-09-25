@@ -781,15 +781,15 @@ internal sealed class MainForm : Form
         await _apiGate.WaitAsync();
         try
         {
-            // The grid never edits visibility itself, but the current flag is sent back so a
-            // status/device/note change cannot accidentally unhide the row.
+            // The grid never edits visibility: is_hidden is omitted so the server preserves
+            // its current value. Sending a stale flag back would unhide a project hidden by
+            // another client after this snapshot was read.
             var updated = await _api.UpdateProjectAsync(current.Id, new ProjectPayload
             {
                 Name = name,
                 StatusId = statusId,
                 DeviceId = deviceId,
-                Note = note,
-                IsHidden = current.IsHidden
+                Note = note
             });
 
             row.Tag = updated;
