@@ -159,6 +159,55 @@ class StorageTests(unittest.TestCase):
         self.assertEqual(renamed["name"], "Renamed")
         self.assertIs(renamed["is_hidden"], True)
 
+    def test_update_without_flag_preserves_visible(self):
+        project = self.storage.create_project("Example")
+
+        renamed = self.storage.update_project(
+            project["id"],
+            name="Renamed",
+            status_id=None,
+            device_id=None,
+            note="changed",
+        )
+
+        self.assertEqual(renamed["name"], "Renamed")
+        self.assertIs(renamed["is_hidden"], False)
+
+    def test_ordinary_update_sql_does_not_touch_is_hidden(self):
+        # Regression test for the read-then-write race: an ordinary update must not
+        # mention is_hidden at all, so a concurrent /hide cannot be overwritten.
+        import sqlite3
+
+        project = self.storage.create_project("Example")
+        self.storage.set_project_hidden(project["id"], True)
+
+        statements: list[str] = []
+        real_connect = sqlite3.connect
+
+        def recording_connect(*args, **kwargs):
+            conn = real_connect(*args, **kwargs)
+            conn.set_trace_callback(statements.append)
+            return conn
+
+        with patch("sqlite3.connect", recording_connect):
+            updated = self.storage.update_project(
+                project["id"],
+                name="Renamed",
+                status_id=None,
+                device_id=None,
+                note="",
+            )
+
+        self.assertIs(updated["is_hidden"], True)
+        updates = [
+            sql
+            for sql in statements
+            if sql.strip().upper().startswith("UPDATE")
+        ]
+        self.assertTrue(updates)
+        for sql in updates:
+            self.assertNotIn("is_hidden", sql)
+
     def test_update_with_explicit_flag_changes_visibility(self):
         project = self.storage.create_project("Example")
 

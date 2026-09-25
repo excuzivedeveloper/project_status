@@ -267,30 +267,35 @@ class Storage:
                 self._validate_fk(conn, "statuses", status_id, "Status")
                 self._validate_fk(conn, "devices", device_id, "Device")
                 if is_hidden is None:
-                    # Old clients send name/status/device/note only. Preserve the
-                    # current flag so Hide -> Rename cannot accidentally unhide.
-                    current = conn.execute(
-                        "SELECT is_hidden FROM projects WHERE id = ?", (project_id,)
-                    ).fetchone()
-                    if current is None:
-                        raise NotFoundError("Project not found")
-                    is_hidden = bool(current["is_hidden"])
-                cur = conn.execute(
-                    """
-                    UPDATE projects
-                    SET name = ?, status_id = ?, device_id = ?, note = ?, is_hidden = ?, updated_at = ?
-                    WHERE id = ?
-                    """,
-                    (
-                        name,
-                        status_id,
-                        device_id,
-                        note,
-                        1 if is_hidden else 0,
-                        utc_now(),
-                        project_id,
-                    ),
-                )
+                    # Old clients send name/status/device/note only. The flag is
+                    # left out of SET entirely so the write is atomic: a concurrent
+                    # /hide or /unhide between read and write cannot be overwritten
+                    # by a stale value.
+                    cur = conn.execute(
+                        """
+                        UPDATE projects
+                        SET name = ?, status_id = ?, device_id = ?, note = ?, updated_at = ?
+                        WHERE id = ?
+                        """,
+                        (name, status_id, device_id, note, utc_now(), project_id),
+                    )
+                else:
+                    cur = conn.execute(
+                        """
+                        UPDATE projects
+                        SET name = ?, status_id = ?, device_id = ?, note = ?, is_hidden = ?, updated_at = ?
+                        WHERE id = ?
+                        """,
+                        (
+                            name,
+                            status_id,
+                            device_id,
+                            note,
+                            1 if is_hidden else 0,
+                            utc_now(),
+                            project_id,
+                        ),
+                    )
                 if cur.rowcount == 0:
                     raise NotFoundError("Project not found")
         except sqlite3.IntegrityError as exc:
