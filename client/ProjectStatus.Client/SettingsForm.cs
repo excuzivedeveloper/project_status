@@ -4,6 +4,9 @@ internal sealed class SettingsForm : Form
 {
     private readonly AppSettings _settings;
     private readonly TextBox _serverText;
+    private readonly TextBox _tokenText;
+    private readonly Label _tokenRemovalLabel;
+    private bool _clearToken;
     private readonly ComboBox _localDeviceCombo;
     private readonly CheckBox _alwaysOnTopCheck;
     private readonly CheckBox _autostartCheck;
@@ -37,11 +40,12 @@ internal sealed class SettingsForm : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 2,
-            RowCount = 6,
+            RowCount = 7,
             Padding = new Padding(12)
         };
         root.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -53,7 +57,31 @@ internal sealed class SettingsForm : Form
         _serverText = new TextBox { Dock = DockStyle.Fill, Text = settings.ServerAddress };
         root.Controls.Add(_serverText, 1, 0);
 
-        root.Controls.Add(new Label { Text = Strings.LabelThisComputer, AutoSize = true, Anchor = AnchorStyles.Left }, 0, 1);
+        root.Controls.Add(new Label { Text = Strings.LabelApiToken, AutoSize = true, Anchor = AnchorStyles.Left }, 0, 1);
+        var tokenPanel = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true };
+        _tokenText = new TextBox { Width = 225, UseSystemPasswordChar = true, PlaceholderText = Strings.TokenLeaveBlankHint };
+        _tokenRemovalLabel = new Label { Text = Strings.TokenWillBeRemoved, AutoSize = true, ForeColor = Color.Firebrick, Visible = false };
+        _tokenText.TextChanged += (_, _) =>
+        {
+            if (_tokenText.Text.Length > 0)
+            {
+                _clearToken = false;
+                _tokenRemovalLabel.Visible = false;
+            }
+        };
+        var clearTokenButton = new Button { Text = Strings.ButtonClearToken, AutoSize = true };
+        clearTokenButton.Click += (_, _) =>
+        {
+            _tokenText.Clear();
+            _clearToken = true;
+            _tokenRemovalLabel.Visible = true;
+        };
+        tokenPanel.Controls.Add(_tokenText);
+        tokenPanel.Controls.Add(clearTokenButton);
+        tokenPanel.Controls.Add(_tokenRemovalLabel);
+        root.Controls.Add(tokenPanel, 1, 1);
+
+        root.Controls.Add(new Label { Text = Strings.LabelThisComputer, AutoSize = true, Anchor = AnchorStyles.Left }, 0, 2);
         _localDeviceCombo = new ComboBox
         {
             Dock = DockStyle.Fill,
@@ -64,7 +92,7 @@ internal sealed class SettingsForm : Form
         {
             _localDeviceCombo.Items.Add(device.Name);
         }
-        root.Controls.Add(_localDeviceCombo, 1, 1);
+        root.Controls.Add(_localDeviceCombo, 1, 2);
 
         var options = new FlowLayoutPanel
         {
@@ -98,7 +126,7 @@ internal sealed class SettingsForm : Form
             .OfType<LanguageChoice>()
             .First(choice => choice.Preference == Localization.FromStoredValue(settings.Language));
         options.Controls.Add(_languageCombo);
-        root.Controls.Add(options, 1, 2);
+        root.Controls.Add(options, 1, 3);
 
         var connectionPanel = new FlowLayoutPanel
         {
@@ -111,7 +139,7 @@ internal sealed class SettingsForm : Form
         _connectionLabel = new Label { AutoSize = true, Anchor = AnchorStyles.Left, Padding = new Padding(4, 7, 0, 0) };
         connectionPanel.Controls.Add(testButton);
         connectionPanel.Controls.Add(_connectionLabel);
-        root.Controls.Add(connectionPanel, 1, 3);
+        root.Controls.Add(connectionPanel, 1, 4);
 
         var tabs = new TabControl { Dock = DockStyle.Fill };
         _projectsList = new ListBox
@@ -144,7 +172,7 @@ internal sealed class SettingsForm : Form
         tabs.TabPages.Add(BuildStatusesTab());
         tabs.TabPages.Add(BuildDevicesTab());
         tabs.TabPages.Add(BuildAppearanceTab());
-        root.Controls.Add(tabs, 0, 4);
+        root.Controls.Add(tabs, 0, 5);
         root.SetColumnSpan(tabs, 2);
 
         var buttons = new FlowLayoutPanel
@@ -158,7 +186,7 @@ internal sealed class SettingsForm : Form
         var cancelButton = new Button { Text = Strings.ButtonCancel, DialogResult = DialogResult.Cancel, AutoSize = true };
         buttons.Controls.Add(saveButton);
         buttons.Controls.Add(cancelButton);
-        root.Controls.Add(buttons, 0, 5);
+        root.Controls.Add(buttons, 0, 6);
         root.SetColumnSpan(buttons, 2);
 
         Controls.Add(root);
@@ -735,8 +763,11 @@ internal sealed class SettingsForm : Form
     private ApiClient CreateApiFromField()
     {
         var address = AppSettings.NormalizeServerAddress(_serverText.Text);
-        return new ApiClient(address);
+        return new ApiClient(address, PendingToken());
     }
+
+    private string PendingToken() => _clearToken ? string.Empty :
+        string.IsNullOrEmpty(_tokenText.Text) ? _settings.GetApiToken() : _tokenText.Text;
 
     private void SaveAndClose()
     {
@@ -755,6 +786,10 @@ internal sealed class SettingsForm : Form
             }
 
             _settings.ServerAddress = server;
+            if (_clearToken || _tokenText.Text.Length > 0)
+            {
+                _settings.SetApiToken(PendingToken());
+            }
             _settings.LocalDeviceName = device;
             _settings.AlwaysOnTop = _alwaysOnTopCheck.Checked;
             _settings.StartWithWindows = _autostartCheck.Checked;
@@ -860,6 +895,7 @@ internal sealed class FirstRunForm : Form
 {
     private readonly AppSettings _settings;
     private readonly TextBox _serverText;
+    private readonly TextBox _tokenText;
     private readonly TextBox _deviceText;
 
     public FirstRunForm(AppSettings settings)
@@ -871,13 +907,13 @@ internal sealed class FirstRunForm : Form
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;
-        ClientSize = new Size(430, 190);
+        ClientSize = new Size(430, 225);
 
         var layout = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             ColumnCount = 2,
-            RowCount = 4,
+            RowCount = 5,
             Padding = new Padding(14)
         };
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
@@ -895,9 +931,13 @@ internal sealed class FirstRunForm : Form
         _serverText = new TextBox { Dock = DockStyle.Fill, Text = settings.ServerAddress };
         layout.Controls.Add(_serverText, 1, 1);
 
-        layout.Controls.Add(new Label { Text = Strings.FirstRunComputerLabel, AutoSize = true, Anchor = AnchorStyles.Left }, 0, 2);
+        layout.Controls.Add(new Label { Text = Strings.LabelApiToken, AutoSize = true, Anchor = AnchorStyles.Left }, 0, 2);
+        _tokenText = new TextBox { Dock = DockStyle.Fill, UseSystemPasswordChar = true };
+        layout.Controls.Add(_tokenText, 1, 2);
+
+        layout.Controls.Add(new Label { Text = Strings.FirstRunComputerLabel, AutoSize = true, Anchor = AnchorStyles.Left }, 0, 3);
         _deviceText = new TextBox { Dock = DockStyle.Fill, Text = settings.LocalDeviceName };
-        layout.Controls.Add(_deviceText, 1, 2);
+        layout.Controls.Add(_deviceText, 1, 3);
 
         var buttons = new FlowLayoutPanel
         {
@@ -910,7 +950,7 @@ internal sealed class FirstRunForm : Form
         var cancelButton = new Button { Text = Strings.ButtonCancel, DialogResult = DialogResult.Cancel, AutoSize = true };
         buttons.Controls.Add(continueButton);
         buttons.Controls.Add(cancelButton);
-        layout.Controls.Add(buttons, 0, 3);
+        layout.Controls.Add(buttons, 0, 4);
         layout.SetColumnSpan(buttons, 2);
 
         Controls.Add(layout);
@@ -923,6 +963,10 @@ internal sealed class FirstRunForm : Form
         try
         {
             var server = AppSettings.NormalizeServerAddress(_serverText.Text);
+            if (string.IsNullOrWhiteSpace(_tokenText.Text))
+            {
+                throw new ArgumentException(Strings.ErrorApiTokenRequired);
+            }
             var device = _deviceText.Text.Trim();
             if (string.IsNullOrWhiteSpace(device))
             {
@@ -935,6 +979,7 @@ internal sealed class FirstRunForm : Form
             }
 
             _settings.ServerAddress = server;
+            _settings.SetApiToken(_tokenText.Text);
             _settings.LocalDeviceName = device;
             DialogResult = DialogResult.OK;
             Close();

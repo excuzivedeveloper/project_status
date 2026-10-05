@@ -23,17 +23,18 @@ There is no project history, user system, notifications, analytics, GitHub integ
 - `POST|PUT|DELETE /api/devices`
 
 A status or device cannot be deleted while a project references it. This keeps the shared state valid.
+All `/api/*` requests require `Authorization: Bearer <token>` matching `PROJECT_STATUS_API_TOKEN`. `/health` remains unauthenticated for local health checks.
 
 ## Run with Docker
 
 ```bash
 cd server
 cp .env.example .env
+# Replace the example token with a cryptographically random secret of at least 32 bytes.
 docker compose up -d --build
 ```
 
-The default bind address is `127.0.0.1`, so the API is not exposed to the network by default.
-For private remote access, install Tailscale on the server and clients, then set `PROJECT_STATUS_BIND_ADDRESS` in the local `.env` to the server's Tailscale IP. Do not commit that `.env` file.
+Keep `PROJECT_STATUS_BIND_ADDRESS=127.0.0.1` and set `PROJECT_STATUS_PORT=18080` when that is the host's allocated backend port. Terminate HTTPS at a reverse proxy and forward to `127.0.0.1:18080`; do not publish the backend directly. Never commit the real token or `.env`.
 
 Check health locally:
 
@@ -50,7 +51,7 @@ cd server
 python -m venv .venv
 # activate the venv, then:
 pip install -r requirements.txt
-PROJECT_STATUS_DB_PATH=./project_status.db uvicorn app.main:app --reload --port 8080
+PROJECT_STATUS_DB_PATH=./project_status.db PROJECT_STATUS_API_TOKEN=local-development-secret uvicorn app.main:app --reload --port 8080
 ```
 
 Storage tests use only the Python standard library:

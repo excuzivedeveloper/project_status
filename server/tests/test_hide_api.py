@@ -17,10 +17,12 @@ class HideApiTests(unittest.TestCase):
         import os
 
         os.environ["PROJECT_STATUS_DB_PATH"] = self.db_path
+        os.environ["PROJECT_STATUS_API_TOKEN"] = "test-token"
         import app.main as main
 
         main.get_storage.cache_clear()
         client = TestClient(main.app)
+        client.headers.update({"Authorization": "Bearer test-token"})
         self.addCleanup(main.get_storage.cache_clear)
         return client
 

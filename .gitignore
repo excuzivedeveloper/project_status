@@ -19,6 +19,9 @@ data/
 # Windows client local state
 appsettings.local.json
 user-settings.json
+settings.json
+*.pem
+*.key
 
 # .NET / Visual Studio
 bin/

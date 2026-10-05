@@ -24,7 +24,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     {
         _settings = settings;
         _singleInstance = singleInstance;
-        _api = new ApiClient(settings.ServerAddress);
+        _api = new ApiClient(settings.ServerAddress, settings.GetApiToken());
         _mainForm = new MainForm(settings, _api);
         MainForm = _mainForm;
 

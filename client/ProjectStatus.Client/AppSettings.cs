@@ -1,4 +1,6 @@
 using System.Text.Json;
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.Win32;
 
 namespace ProjectStatus.Client;
@@ -6,6 +8,28 @@ namespace ProjectStatus.Client;
 internal sealed class AppSettings
 {
     public string ServerAddress { get; set; } = string.Empty;
+    public string ApiTokenProtected { get; set; } = string.Empty;
+
+    public void SetApiToken(string token)
+    {
+        ApiTokenProtected = string.IsNullOrWhiteSpace(token) ? string.Empty :
+            Convert.ToBase64String(ProtectedData.Protect(Encoding.UTF8.GetBytes(token), null,
+                DataProtectionScope.CurrentUser));
+    }
+
+    public string GetApiToken()
+    {
+        try
+        {
+            return string.IsNullOrEmpty(ApiTokenProtected) ? string.Empty :
+                Encoding.UTF8.GetString(ProtectedData.Unprotect(Convert.FromBase64String(ApiTokenProtected),
+                    null, DataProtectionScope.CurrentUser));
+        }
+        catch (Exception ex) when (ex is FormatException or CryptographicException)
+        {
+            return string.Empty;
+        }
+    }
     public string LocalDeviceName { get; set; } = string.Empty;
     public bool AlwaysOnTop { get; set; }
     public bool StartWithWindows { get; set; } = true;
@@ -53,7 +77,7 @@ internal sealed class AppSettings
 
         if (!value.Contains("://", StringComparison.Ordinal))
         {
-            value = "http://" + value;
+            value = "https://" + value;
         }
 
         if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) ||

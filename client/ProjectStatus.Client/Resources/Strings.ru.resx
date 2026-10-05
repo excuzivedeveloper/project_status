@@ -81,6 +81,12 @@
   <data name="ErrorServerInvalid" xml:space="preserve">
     <value>Введите корректный адрес сервера HTTP или HTTPS.</value>
   </data>
+  <data name="ErrorApiTokenRequired" xml:space="preserve"><value>Нужен API токен. Введите его в настройках.</value></data>
+  <data name="ErrorAuthenticationFailed" xml:space="preserve"><value>Ошибка аутентификации. Проверьте API токен.</value></data>
+  <data name="LabelApiToken" xml:space="preserve"><value>API токен:</value></data>
+  <data name="TokenLeaveBlankHint" xml:space="preserve"><value>Оставьте пустым, чтобы сохранить токен</value></data>
+  <data name="ButtonClearToken" xml:space="preserve"><value>Удалить токен</value></data>
+  <data name="TokenWillBeRemoved" xml:space="preserve"><value>Токен будет удалён при сохранении.</value></data>
   <data name="ErrorComputerNameRequired" xml:space="preserve">
     <value>Имя этого компьютера обязательно.</value>
   </data>

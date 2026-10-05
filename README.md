@@ -2,7 +2,7 @@
 
 A tiny self-hosted project status tracker for Windows.
 
-The goal is intentionally small: keep a short list of active projects visible, show the current status and device for each project, and synchronize the latest state between Windows computers through a private server.
+The goal is intentionally small: keep a short list of active projects visible, show the current status and device for each project, and synchronize the latest state between Windows computers through a small server API.
 
 ## MVP
 
@@ -36,7 +36,7 @@ The server will provide:
 
 ## Intended deployment
 
-The server is meant to stay private rather than be exposed directly to the public internet. A private network such as Tailscale can connect the Windows clients to the server from the same or different physical networks.
+The client connects through an HTTPS reverse proxy with a shared Bearer API token. The FastAPI backend should bind only to localhost. Tailscale is optional for administration, not required for client transport.
 
 ## Repository layout
 
@@ -67,4 +67,4 @@ Project Status is deliberately not a task manager, issue tracker, Kanban board, 
 
 ## Status
 
-Initial project skeleton. Implementation is not started yet.
+Windows client and sync server are implemented.

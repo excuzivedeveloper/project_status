@@ -27,6 +27,12 @@ internal static class Strings
     public static string ErrorProjectGone => Localization.Get(nameof(ErrorProjectGone));
     public static string ErrorServerRequired => Localization.Get(nameof(ErrorServerRequired));
     public static string ErrorServerInvalid => Localization.Get(nameof(ErrorServerInvalid));
+    public static string ErrorApiTokenRequired => Localization.Get(nameof(ErrorApiTokenRequired));
+    public static string ErrorAuthenticationFailed => Localization.Get(nameof(ErrorAuthenticationFailed));
+    public static string LabelApiToken => Localization.Get(nameof(LabelApiToken));
+    public static string TokenLeaveBlankHint => Localization.Get(nameof(TokenLeaveBlankHint));
+    public static string ButtonClearToken => Localization.Get(nameof(ButtonClearToken));
+    public static string TokenWillBeRemoved => Localization.Get(nameof(TokenWillBeRemoved));
     public static string ErrorComputerNameRequired => Localization.Get(nameof(ErrorComputerNameRequired));
     public static string ErrorComputerNameTooLong => Localization.Get(nameof(ErrorComputerNameTooLong));
     public static string LabelServer => Localization.Get(nameof(LabelServer));

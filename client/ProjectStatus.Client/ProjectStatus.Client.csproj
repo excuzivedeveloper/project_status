@@ -8,7 +8,7 @@
     <Nullable>enable</Nullable>
     <AssemblyName>ProjectStatus</AssemblyName>
     <RootNamespace>ProjectStatus.Client</RootNamespace>
-    <Version>0.1.4</Version>
+    <Version>0.1.5</Version>
     <ApplicationIcon>Assets\project_status.ico</ApplicationIcon>
     <PublishSingleFile>true</PublishSingleFile>
   </PropertyGroup>
@@ -16,5 +16,6 @@
   <ItemGroup>
     <!-- The focused tests cover the pure logic in this assembly. -->
     <InternalsVisibleTo Include="ProjectStatus.Client.Tests" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
   </ItemGroup>
 </Project>

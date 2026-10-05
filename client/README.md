@@ -17,7 +17,7 @@ The client stays deliberately small:
 - closing the window hides it to the tray;
 - optional always-on-top mode;
 - current-user Windows autostart;
-- first-run server address + computer name setup;
+- first-run HTTPS server address, API token, and computer name setup;
 - shared status/device management in Settings;
 - local window position, size and pin preference;
 - one startup check for a newer GitHub Release;
@@ -32,7 +32,7 @@ The client automatically creates the configured local computer in the shared dev
 - built-in `HttpClient` and `System.Text.Json`
 - no third-party NuGet packages
 
-Local settings are stored under the current user's local application data directory and are never committed to Git.
+The server address is stored in `%LOCALAPPDATA%\ProjectStatus\settings.json`. The API token is protected with Windows DPAPI `CurrentUser` before it is saved there; plaintext is never written to the file. Existing settings load unchanged and can receive a token in Settings. A host entered without a scheme defaults to HTTPS; explicit HTTP remains available for local development. Tailscale is no longer required for client transport.
 
 ## Build
 
