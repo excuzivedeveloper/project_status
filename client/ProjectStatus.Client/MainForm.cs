@@ -276,6 +276,7 @@ internal sealed class MainForm : Form
         {
             _settings.ServerAddress = AppSettings.NormalizeServerAddress(_settings.ServerAddress);
             _api.SetServerAddress(_settings.ServerAddress);
+            _api.SetApiToken(_settings.GetApiToken());
             AutostartManager.Apply(_settings.StartWithWindows);
             _deviceLabel.Text = Strings.DeviceLabelFormat(_settings.LocalDeviceName);
             SetAlwaysOnTop(_settings.AlwaysOnTop);
@@ -627,6 +628,11 @@ internal sealed class MainForm : Form
             _state = state;
             _stateSignature = signature;
             BindState();
+        }
+        catch (ApiException ex) when (ex.Message == Strings.ErrorAuthenticationFailed || ex.Message == Strings.ErrorApiTokenRequired)
+        {
+            SetSyncOffline();
+            _syncLabel.Text = ex.Message;
         }
         catch
         {

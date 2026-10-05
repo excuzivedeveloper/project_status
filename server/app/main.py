@@ -2,15 +2,43 @@ from __future__ import annotations
 
 import os
 import re
+import secrets
+from contextlib import asynccontextmanager
 from functools import lru_cache
 
-from fastapi import FastAPI, HTTPException, Response, status
+from fastapi import FastAPI, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field, field_validator
 
 from .storage import ConflictError, InUseError, NotFoundError, Storage
 
-app = FastAPI(title="Project Status API", version="0.1.0")
+TOKEN_PLACEHOLDER = "replace-with-a-long-random-secret"
+
+
+def configured_api_token() -> str:
+    token = os.getenv("PROJECT_STATUS_API_TOKEN", "")
+    if not token.strip() or token.strip() == TOKEN_PLACEHOLDER:
+        raise RuntimeError("PROJECT_STATUS_API_TOKEN must be set to a non-placeholder secret")
+    return token
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    configured_api_token()
+    yield
+
+
+app = FastAPI(title="Project Status API", version="0.1.0", lifespan=lifespan)
 COLOR_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
+
+
+@app.middleware("http")
+async def require_api_token(request: Request, call_next):
+    if request.url.path.startswith("/api/"):
+        expected = configured_api_token()
+        scheme, _, supplied = request.headers.get("authorization", "").partition(" ")
+        if scheme.lower() != "bearer" or not secrets.compare_digest(supplied, expected):
+            return Response(status_code=401, headers={"WWW-Authenticate": "Bearer"})
+    return await call_next(request)
 
 
 @lru_cache(maxsize=1)

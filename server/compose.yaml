@@ -4,6 +4,7 @@ services:
     restart: unless-stopped
     environment:
       PROJECT_STATUS_DB_PATH: /data/project_status.db
+      PROJECT_STATUS_API_TOKEN: ${PROJECT_STATUS_API_TOKEN:?Set a strong API token in server/.env}
     ports:
       - "${PROJECT_STATUS_BIND_ADDRESS:-127.0.0.1}:${PROJECT_STATUS_PORT:-8080}:8080"
     volumes:

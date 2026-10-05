@@ -81,6 +81,12 @@
   <data name="ErrorServerInvalid" xml:space="preserve">
     <value>Enter a valid HTTP or HTTPS server address.</value>
   </data>
+  <data name="ErrorApiTokenRequired" xml:space="preserve"><value>API token is required. Enter it in Settings.</value></data>
+  <data name="ErrorAuthenticationFailed" xml:space="preserve"><value>Authentication failed. Check the API token.</value></data>
+  <data name="LabelApiToken" xml:space="preserve"><value>API token:</value></data>
+  <data name="TokenLeaveBlankHint" xml:space="preserve"><value>Leave blank to keep saved token</value></data>
+  <data name="ButtonClearToken" xml:space="preserve"><value>Clear token</value></data>
+  <data name="TokenWillBeRemoved" xml:space="preserve"><value>Token will be removed when you save.</value></data>
   <data name="ErrorComputerNameRequired" xml:space="preserve">
     <value>This computer name is required.</value>
   </data>

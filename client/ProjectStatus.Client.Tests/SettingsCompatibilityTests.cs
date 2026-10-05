@@ -28,6 +28,7 @@ public class SettingsCompatibilityTests
 
         Assert.Equal("http://example.invalid:8080", settings.ServerAddress);
         Assert.Equal("Desk", settings.LocalDeviceName);
+        Assert.Equal(string.Empty, settings.GetApiToken());
         Assert.True(settings.AlwaysOnTop);
         Assert.False(settings.StartWithWindows);
         Assert.Equal("0.1.3", settings.LastUpdatePromptVersion);
@@ -35,6 +36,38 @@ public class SettingsCompatibilityTests
         Assert.Equal(20, settings.WindowY);
         Assert.Equal(700, settings.WindowWidth);
         Assert.Equal(320, settings.WindowHeight);
+    }
+
+    [Fact]
+    public void Address_scheme_defaults_to_https_but_preserves_explicit_http()
+    {
+        Assert.Equal("https://example.invalid:18443", AppSettings.NormalizeServerAddress("example.invalid:18443"));
+        Assert.Equal("http://example.invalid:8080", AppSettings.NormalizeServerAddress("http://example.invalid:8080"));
+    }
+
+    [Fact]
+    public void Token_is_protected_and_corrupt_data_is_ignored()
+    {
+        var settings = AppSettingsStore.FromJson(LegacySettingsJson);
+        settings.SetApiToken("private-test-token");
+        var json = AppSettingsStore.ToJson(settings);
+        Assert.DoesNotContain("private-test-token", json);
+        Assert.Equal("private-test-token", AppSettingsStore.FromJson(json).GetApiToken());
+        settings.ApiTokenProtected = "invalid-base64";
+        Assert.Equal(string.Empty, settings.GetApiToken());
+        settings.ApiTokenProtected = Convert.ToBase64String(new byte[] { 1, 2, 3 });
+        Assert.Equal(string.Empty, settings.GetApiToken());
+    }
+
+    [Fact]
+    public void Explicit_token_clear_removes_protected_value()
+    {
+        var settings = new AppSettings();
+        settings.SetApiToken("private-test-token");
+        Assert.NotEmpty(settings.ApiTokenProtected);
+        settings.SetApiToken(string.Empty);
+        Assert.Equal(string.Empty, settings.ApiTokenProtected);
+        Assert.Equal(string.Empty, AppSettingsStore.FromJson(AppSettingsStore.ToJson(settings)).GetApiToken());
     }
 
     [Fact]
